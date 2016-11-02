@@ -1,0 +1,49 @@
+源自CONTRIBUTING.md
+
+kibana setup 
+
+Development Environment Setup
+
+Install node.js (we recommend using nvm)
+
+follow directions at github.com/creationix/nvm, then
+
+```sh
+
+nvm install v0.10.35
+
+```
+Install grunt and bower globally (as root if not using nvm)
+
+```sh
+
+npm install -g grunt-cli bower
+
+```
+Clone the kibana repo and move into it
+
+```sh
+
+git clone https://github.com/elastic/kibana.git kibana
+
+cd kibana
+
+git tag && git checkout v4.1.1
+
+```
+Install node and bower dependencies
+
+```sh
+
+npm install && bower install --allow-root
+
+```
+Start the development server.
+
+If do not install elasticksearch in you ENV, please use the "--with-es" flag to install & start elasticsearch too ```sh
+
+grunt dev
+
+```
+
+基于源代码，修改后，执行 grunt build --force #跳过README warning部分

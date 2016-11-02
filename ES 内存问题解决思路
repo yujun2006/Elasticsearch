@@ -1,0 +1,79 @@
+ES 内存问题解决思路
+
+
+
+ES 监控（对接监控组）
+1，把更多ES 服务器纳入监控
+2，在监控列表中增加更多监控项
+
+
+ES 问题排查
+
+1，Check the cluster health with Elasticsearch-head or Kopf
+2，Check the historical health with Marvel
+3，Check Elasticsearch log files
+4，Check system log files
+
+ES 问题分类
+
+1，Out-of-memory errors
+2，Not enough system memory available
+3，Resource contention
+4，Running out of disk space
+
+
+现在针对Out-of-memory
+
+1，Limit the size of the field data cache
+
+   indices.fielddata.cache.size: 30%
+
+2，Enable circuit breakers for the field data cache
+   
+   indices.breaker.fielddata.limit: 60%
+
+3，Analyzing the query
+   index.search.slowlog.threshold.query.warn: 8s
+   index.search.slowlog.threshold.query.info: 4s
+   index.search.slowlog.threshold.query.debug: 2s
+   index.search.slowlog.threshold.query.trace: 500ms
+
+   index.search.slowlog.threshold.fetch.warn: 1s
+   index.search.slowlog.threshold.fetch.info: 750ms
+   index.search.slowlog.threshold.fetch.debug: 500ms
+   index.search.slowlog.threshold.fetch.trace: 250ms
+
+   index.indexing.slowlog.threshold.index.warn: 8s 
+   index.indexing.slowlog.threshold.index.info: 4s 
+   index.indexing.slowlog.threshold.index.debug: 2s 
+   index.indexing.slowlog.threshold.index.trace: 500ms
+   index.indexing.slowlog.level: info
+   index.indexing.slowlog.source: 5000
+
+   通过以上设置定位到具体的query DSL 语句。
+
+
+
+后续
+
+1，ES 升级
+  
+
+2，ES 部署架构调整 如采用Hot-Warm architecture等等。
+
+
+
+
+
+
+
+
+
+   
+
+
+
+
+
+
+

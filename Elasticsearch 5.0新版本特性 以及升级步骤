@@ -1,0 +1,239 @@
+  Elasticsearch 5.0新版本特性 以及升级步骤
+一 ,Elasticsearch 5.0新版本的特性与改进
+1，Lucene 6.x 的支持。
+Elasticsearch5.0率先集成了Lucene6版本，其中最重要的特性就是 Dimensional Point Fields，多维浮点字段，ES里面相关的字段如date, numeric，ip 和 Geospatial 都将大大提升性能。默认使用BM25评分算法，效果更佳，之前是TF/IDF。
+
+2，aggregation的改进是非常大，Instant Aggregations。
+Elasticsearch已经在Shard层面提供了Aggregation缓存，如果你的数据没有变化，ES能够直接返回上次的缓存结果，
+
+3，Sliced Scroll类型
+用过Scroll接口吧，很慢？如果你数据量很大，用Scroll遍历数据那确实是接受不了，现在Scroll接口可以并发来进行数据遍历了。
+每个Scroll请求，可以分成多个Slice请求，可以理解为切片，各Slice独立并行，利用Scroll重建或者遍历要快很多倍。
+
+4，Profile API
+elasticsearch在很多层面都提供了stats方便你来监控调优，但是还不够，其实很多情况下查询速度慢很大一部分原因是糟糕的查询引起的，玩过SQL的人都知道，数据库服务的执行计划（execution plan）非常有用，可以看到那些查询走没走索引和执行时间，用来调优，elasticsearch现在提供了Profile API来进行查询的优化，只需要在查询的时候开启profile：true就可以了，一个查询执行过程中的每个组件的性能消耗都能收集到。
+
+https://www.elastic.co/guide/en/elasticsearch/reference/current/search-profile.html
+
+curl -XGET 'localhost:9200/_search' -d '{
+  "profile": true, 
+  "query" : {
+    "match" : { "message" : "search test" }
+  }
+}
+ 	Setting the top-level profile parameter to true will enable profiling for the search
+This will yield the following result:
+{
+   "took": 25,
+   "timed_out": false,
+   "_shards": {
+      "total": 1,
+      "successful": 1,
+      "failed": 0
+   },
+   "hits": {
+      "total": 1,
+      "max_score": 1,
+      "hits": [ ... ]  
+   },
+   "profile": {
+     "shards": [
+        {
+           "id": "[htuC6YnSSSmKFq5UBt0YMA][test][0]",
+           "searches": [
+              {
+                 "query": [
+                    {
+                       "query_type": "BooleanQuery",
+                       "lucene": "message:search message:test",
+                       "time": "15.52889800ms",
+                       "breakdown": {
+                          "score": 0,
+                          "next_doc": 24495,
+                          "match": 0,
+                          "create_weight": 8488388,
+                          "build_scorer": 7016015,
+                          "advance": 0
+                       },
+                       "children": [
+                          {
+                             "query_type": "TermQuery",
+                             "lucene": "message:search",
+                             "time": "4.938855000ms",
+                             "breakdown": {
+                                "score": 0,
+                                "next_doc": 18332,
+                                "match": 0,
+                                "create_weight": 2945570,
+                                "build_scorer": 1974953,
+                                "advance": 0
+                             }
+                          },
+                          {
+                             "query_type": "TermQuery",
+                             "lucene": "message:test",
+                             "time": "0.5016660000ms",
+                             "breakdown": {
+                                "score": 0,
+                                "next_doc": 0,
+                                "match": 0,
+                                "create_weight": 170534,
+                                "build_scorer": 331132,
+                                "advance": 0
+                             }
+                          }
+                       ]
+                    }
+                 ],
+                 "rewrite_time": 185002,
+                 "collector": [
+                    {
+                       "name": "SimpleTopScoreDocCollector",
+                       "reason": "search_top_hits",
+                       "time": "2.206529000ms"
+                    }
+                 ]
+              }
+           ]
+        }
+     ]
+  }
+}
+
+
+5，深度分页
+深度分页，是个老大难的问题，因为需要全局排序（number_of_shards * (from + size)），所以需要消耗大量内存，以前的es没有限制，有些同学翻到几千页发现es直接内存溢出挂了，后面elasticsearch加上了限制，from+size不能超过1w条，并且如果需要深度翻页，建议使用scroll来做。
+但是scroll有几个问题，第一个是没有顺序，直接从底层segment进行遍历读取，第二个实时性没法保证，scroll操作有状态，es会维持scroll请求的上下文一段时间，超时后才释放，另外你在scroll过程中对索引数据进行了修改了，这个时候scroll接口是拿不到的，灵活性较差，现在有一个新的 Search After 机制，其实和scroll类似，也是游标的机制，它的原理是对文档按照多个字段进行排序，然后利用上一个结果的最后一个文档作为起始值，拿size个文档，一般我们建议使用_uid这个字段，它的值是唯一的id。
+
+
+6，Shrink API
+elasticsearch索引的shard数是固定的，设置好了之后不能修改，如果发现shard太多或者太少的问题，之前如果要设置Elasticsearch的分片数，只能在创建索引的时候设置好，并且数据进来了之后就不能进行修改，如果要修改，只能重建索引。
+
+现在有了Shrink接口，它可将分片数进行收缩成它的因数，如之前你是15个分片，你可以收缩成5个或者3个又或者1个，那么我们就可以想象成这样一种场景，在写入压力非常大的收集阶段，设置足够多的索引，充分利用shard的并行写能力，索引写完之后收缩成更少的shard，提高查询性能。
+
+An index with four shards shrunk into a new index with a single shard
+ 
+
+
+7，Reindex
+索引数据，大家之前经常重建，数据源在各种场景，重建起来很是头痛，那就不得不说说现在新加的Reindex接口了，Reindex可以直接在Elasticsearch集群里面对数据进行重建，如果你的mapping因为修改而需要重建，又或者索引设置修改需要重建的时候，借助Reindex可以很方便的异步进行重建，并且支持跨集群间的数据迁移。
+比如按天创建的索引可以定期重建合并到以月为单位的索引里面去。
+POST /_reindex
+{
+  "source": {
+    "remote": { "host": "http://otherhost:9200" },
+    "index": "my-index",
+    "query": { ... }
+  },
+  "dest": { "index": "my-new-index" }
+}
+
+8，RestClient
+5.0里面提供了第一个Java原生的REST客户端SDK，相比之前的TransportClient，版本依赖绑定，集群升级麻烦，不支持跨Java版本的调用等问题，新的基于HTTP协议的客户端对Elasticsearch的依赖解耦，没有jar包冲突，提供了集群节点自动发现、日志处理、节点请求失败自动进行请求轮询，充分发挥Elasticsearch的高可用能力，并且性能不相上下
+RestClient client = RestClient.builder()
+    .setHosts(new HttpHost("localhost", 9200)).build();
+HttpEntity body =
+    new StringEntity("{\"query\": {\"match_all\": {}}}", "UTF-8");
+Map<String, String> params = new HashMap<>();
+params.put("pretty", "true");
+
+ElasticsearchResponse resp =
+    client.performRequest("POST", "/_search", params, body);
+System.out.println("got: " + resp.getEntity());
+
+9，Wait for refresh
+提供了文档级别的Refresh
+https://www.elastic.co/guide/en/elasticsearch/reference/master/docs-refresh.html
+
+10，Ingest Node
+大家之前如果需要对数据进行加工，都是在索引之前进行处理，比如logstash可以对日志进行结构化和转换，现在直接在es就可以处理了，目前es提供了一些常用的诸如convert、grok之类的处理器，在使用的时候，先定义一个pipeline管道，里面设置文档的加工逻辑，在建索引的时候指定pipeline名称，那么这个索引就会按照预先定义好的pipeline来处理了；
+https://www.elastic.co/guide/en/elasticsearch/reference/master/ingest.html
+11，Painless Scripting
+还记得Groove脚本的漏洞吧，Groove脚本开启之后，如果被人误用可能带来的漏洞，为什么呢，主要是这些外部的脚本引擎太过于强大，什么都能做，用不好或者设置不当就会引起安全风险，基于安全和性能方面，我们自己开发了一个新的脚本引擎，名字就叫Painless，顾名思义，简单安全，无痛使用，和Groove的沙盒机制不一样，Painless使用白名单来限制函数与字段的访问，针对es的场景来进行优化，只做es数据的操作，更加轻量级，速度要快好几倍，并且支持Java静态类型，语法保持Groove类似，还支持Java的lambda表达式。
+
+12，基础架构方面的变化
+新增：Task Manager
+这个是5.0 引入任务调度管理机制，用来做离线任务的管理，比如长时间运行的reindex和update_by_query等都是运行在TaskManager机制之上的，并且任务是可管理的，你可以随时cancel掉，并且任务状态持久化，支持故障恢复；
+
+还新增一个：Depreated logging
+大家在用ES的时候，其实有些接口可能以及打上了Depreated标签，即废弃了，在将来的某个版本中就会移除，你当前能用是因为一般废弃的接口都不会立即移除，给足够的时间迁移，但是也是需要知道哪些不能用了，要改应用代码了，所以现在有了Depreated日志，当打开这个日志之后，你调用的接口如果已经是废弃的接口，就会记录下日志，那么接下来的事情你就知道你应该怎么做了。
+新增: Cluster allocation explain API
+『谁能给我一个shard不能分配的理由』，现在有了，大家如果之前遇到过分片不能正常分配的问题，但是不知道是什么原因，只能尝试手动路由或者重启节点，但是不一定能解决，其实里面有很多原因，现在提供的这个explain接口就是告诉你目前为什么不能正常分配的原因，方便你去解决
+
+
+另外在数据结构这块，新增: half_float 类型
+https://www.elastic.co/guide/en/elasticsearch/reference/master/number.html
+只使用 16 位 足够满足大部分存储监控数值类型的场景，支持范围：2负24次方 到 65504，但是只占用float一半的存储空间。
+Aggregation新增: Matrix Stats Aggregation #18300
+金融领域非常有用的，可计算多个向量元素协方差矩阵、相关系数矩阵等等
+另外一个重要的特性：为索引写操作添加顺序号 #10708
+大家知道es是在primary上写完然后同步写副本，这些请求都是并发的，虽然可以通过version来控制冲突，
+但是没法保证其他副本的操作顺序，通过写的时候产生顺序号，并且在本地也写入checkpoint来记录操作点，
+这样在副本恢复的时候也可以知道当前副本的数据位置，而只需要从指定的数据开始恢复就行了，而不是像以前的粗暴的做完整的文件同步，另外这些顺序号也是持久化的，重启后也可以快速恢复副本信息，想想以前的大量无用拷贝吧和来回倒腾数据吧。
+Elasticsearch5.0其他方面的改进
+我们再看看mapping这块的改进吧。
+引入新的字段类型Text/Keyword 来替换 String
+以前的string类型被分成Text和Keyword两种类型，keyword类型的数据只能完全匹配，适合那些不需要分词的数据，
+对过滤、聚合非常友好，text当然就是全文检索需要分词的字段类型了。将类型分开的好处就是使用起来更加简单清晰，以前需要设置analyzer和index，并且有很多都是自定义的分词器，从名称根本看不出来到底分词没有，用起来很麻烦。
+另外string类型暂时还在的，6.0会移除。
+还有关于Index Settings 的改进
+Elasticsearch的配置实在太多，在以前的版本间，还移除过很多无用的配置，经常弄错有没有？
+现在，配置验证更加严格和保证原子性，如果其中一项失败，那个整个都会更新请求都会失败，不会一半成功一半失败。下面主要说两点：
+1.	设置可以重设会默认值，只需要设置为 `null`即可
+2.	获取设置接口新增参数`?include_defaults`,可以直接返回所有设置和默认值
+集群处理的改进: Deleted Index Tombstones
+在以前的es版本中，如果你的旧节点包含了部分索引数据，但是这个索引可能后面都已经删掉了，你启动这个节点之后，会把索引重新加到集群中，是不是觉得有点阴魂不散，现在es5.0会在集群状态信息里面保留500个删除的索引信息，所以如果发现这个索引是已经删除过的就会自动清理，不会再重复加进来了。
+文档对象的改进: 字段名重新支持英文句号，再2.0的时候移除过dot在字段名中的支持，现在问题解决了，又重新支持了。
+还有其他的一些改进
+Cluster state的修改现在会和所有节点进行ack确认。
+Shard的一个副本如果失败了，Primary标记失败的时候会和Master节点确认完毕再返回。
+使用UUID来作为索引的物理的路径名，有很多好处，避免命名的冲突。
+_timestamp 和 _ttl已经移除，需要在Ingest或者程序端处理。
+ES可直接用HDFS来进行备份还原（Snapshot/Restore ）了 #15191。
+Delete-by-query和Update-by-query重新回到core，以前是插件，现在可以直接使用了，也是构建在Reindex机制之上。
+HTTP请求默认支持压缩，当然http调用端需要在header信息里面传对应的支持信息。
+创建索引不会再让集群变红了，不会因为这个卡死集群了。
+默认使用BM25评分算法，效果更佳，之前是TF/IDF。
+快照Snapshots添加UUID解决冲突 #18156。
+限制索引请求大小，避免大量并发请求压垮ES #16011。
+限制单个请求的shards数量，默认1000个 #17396。
+移除 site plugins，就是说head、bigdesk都不能直接装es里面了，不过可以部署独立站点（反正都是静态文件）或开发kibana插件 #16038。
+允许现有parent类型新增child类型 #17956。
+这个功能对于使用parent-child特性的人应该非常有用。
+支持分号（；）来分割url参数，与符号（&）一样 #18175。
+比如下面这个例子：
+curl http://localhost:9200/_cluster/health?level=indices;pretty=true
+http://www.infoq.com/cn/news/2016/08/Elasticsearch-5-0-Elastic
+
+
+
+
+
+二， Elasticsearch 升级
+
+1，	从Elasticsearch 1.x到Elasticsearch 2.x
+
+https://github.com/elastic/elasticsearch-migration/tree/1.x
+
+2，	从Elasticsearch 2.x到Elasticsearch 5.x
+  A，提供了Elasticsearch Migration Helper 只是兼容Elasicsearch 2.3
+     Sudo /usr/share/elasticsearch/bin/plugin install https://github.com/elastic/elasticsearch-migration/releases/download/v2.0-alpha2/elasticsearch-migration-2.0-alpha2.zip
+
+  B，Cluster Checkup
+     Elasticsearch-head, Kopf, and the Marvel Agent 这些插件在5.0版本不能再用了。
+  C, 利用Elasticsearch Migration Helper 启用deprecation log
+     这个log记录了哪些elasticsearch api 将被deprecation 或者移除
+  以上步骤好了，就可以进行升级了。
+
+
+三，Elasticsearch 5 监控
+
+在ES 5中，marvel 将会重命名为monitoring，然后随之而来的是The Elasticsearch X-Pack ，这个工具箱包括了：
+1，	Monitoring 监控
+2，	Shield权限
+3，	Watcher 类似 Nagios，能否发送email 警告，如果查询很慢
+4，	Graph 图形化工具，数据可视化工具
+5，	报表。基于kibana
+
+
+ 

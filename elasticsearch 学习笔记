@@ -1,0 +1,590 @@
+http://www.okuc.xyz/tags/elasticsearch/ 转
+
+elasticsearch 学习笔记
+
+《Elasticsearch服务器开发》学习笔记（一）
+第1章 入门-知识点
+本系列是本人在学习《Elasticsearch服务器开发》一书中所做的读书笔记，如有读不懂的地方，请直接参考原书。建议直接购买原书，支持正版。
+1.术语
+•	文档document：索引和搜索时使用的主要数据载体，包含一个或多个存有数据的字段。
+•	字段field：文档的一部分，包含名称和值两部分。
+•	词term：一个搜索单元，表示文本中的一个词
+•	标记token：表示在字段文本中出现的词，由这个词的文本、开始和结束偏移量以及类型组成
+2.Apache Luncence将所有信息写到一个称为倒排索引Inverted index的结构中。它是面向词而不是文档的。
+3.分词的工作由分析器完成，它由一个分词器tokenizer和0个或多个标记过滤器token filter组成，也可以有0个或多个字符射器character mapper。分词的结果被称为标记流token stream，它是一个接一个的标记，准备被过滤器处理。
+4.Lucene分析器包含零个或多个标记过滤器，用来处理标记流中的标记，如
+•	小写过滤器:把所有的标记变成小写。
+•	同义词过滤器:基于基本的同义词规则，把一个标记换成另一个同义的标记。
+•	多语言词干提取过滤器:减少标记，得到词根或者基本形式，即词干。
+过滤器是一个接一个处理的。所以我们通过使用多个过滤器，几乎可以达到无限的分析可能性。
+字符映射器对未经分析的文本起作用，他们在分词器之前工作，因此，我们可以很容易地从文本的整体部分去除HTML标签而无需担心它们被标记。
+5.建立索引时，Lucene会使用你选择的分析器来处理你的文档内容。不同的字段也可以使用不同的分析器，所以文档的名字字段可以和汇总字段做不同的分析。也可以不分析字段。
+查询时，查询将被分析。但是，你也可以选择不分析。即你查询的词是否还会自动拆分匹配。
+索引和查询词应该匹配，以返回文档。而且在索引和查询分析时，对所用标记过滤器保持相同的顺序，这样被分析出来的词是一样的。
+6.评分:分数是根据文档和查询的匹配度用计分公式计算的结果。默认情况下，Apache Lucene使用TF/IDF(词频/逆向文档频率)评分机制。分数越高，越相关。
+7.索引index是Elasticsearch对逻辑数据的逻辑存储，相当于关系数据库的表。索引的结构是为快速有效的全文索引准备的，特别是它不存储原始值。索引可以放在一台机器或者分散在多台服务器上，每个索引有一个或多个分片shard，每个分片可以有多个副本replica。感觉把索引理解成关系数据库的表，类型理解为表，文档理解为一行记录，更好！ by2015.08.14
+8.文档document是存储的主要实体，相当于数据库中表的一行记录。在Elasticsearch的文档中，相同字段必须有相同的类型。如所有包含title字段的文档，title字段类型都必须是一样的，比如string。
+文档由多个字段组成，每个字段可能多次出现在一个文档里，这样的字段叫多值字段multivalued。每个字段都有类型：文本、数值和日期等。字段也可以是复杂类型。文档不需要有固定的结构，每个文档可以有不同的字段，在程序开发期间，不必确定有那些字段。每个文档存储在一个索引中并有一个Elasticsearch自动生成的唯一标识符和文档类型。文档需要有对应文档类型的唯一标识符，这意味着在一个索引中，两个不同类型的文档可以有相同的唯一的标识符。
+9.一个索引对象可以存储很多不同用途的对象。如，一个博客程序可以保存文章和评论。文档类型让我们轻易地区分单个索引中的不同对象，每个文档可以有不同的结构，但是实际操作中，将文件按类型区分对数据操作有很大帮助。在一个索引中，即使文档类型不同，相同的属性不能设置不同的类型
+文档类型对应索引中不同的对象。
+10.映射:文档中的每个字段都必须根据不同类型做相应的分析。Elasticsearch中映射中存储有关字段的信息。每一个文档类型都有自已的映射，即使我们没有明确定义。
+11.几个概念：集群、节点、分片（索引较大时，可以分成较小的片，每个片可以放到不同的服务器上，Elasticrearch可以自动把查询分给不同的片并合并结果，应用程序并不知道片的存在。）、副本（每个片可以有0到多个副本，其中一片会被自动选择去更改索引操作，这种特别的分片叫主分片，其作的片就是完整的备份，叫副本分片。主分片丢失时，会有新的副本分片被推荐成新的主分片）
+12.当发送一个新的文档集群时，你指定一个目标索引并发送给他的任意一个节点。这个节点知道目标索引有多个分片，并能确定那个分片应该存储你的文档。ElasticSearch使用文档的唯一标识符来计算文档应该被存放在那个分片中。索引请求发送一个节点后，该节点会转发文档到持有相关分片的目标节点中。
+建立索引时，副本只作为额外的存储备份来用。查询时，副本会平衡分片和它的副本之前的负载。
+13.与Elasticsearch交互的主要接口是基于HTTP协议和REST的。可以使用浏览器来请求，复杂的可以使用curl来请求。
+14.安装：rpm安装包安装好后，配置文件应该在/etc/sysconfig/elasticsearch。如果操作系统基于红帽，可以使用/etc/init.d/elasticsearch下的init脚本。如果你的操作系统是SUSE Linux，可以使用/bin下的systemctl文件来启动和停止Elasticsearch服务。
+deb安装包安装后，配置文件存在/etc/elasticsearch/elasticsearch.yml。/etc/init.d/elasticsearch下的init脚本可以用来启动和停止Elasticsearch。此外，/etc/default/elasticsearch下的文件包含了环境变量。
+15.目录结构：
+•	bin：运行Elasticsearch实例和插件管理所需的脚本
+•	config：配置文件所在的目录
+•	lib：Elasticsarch使用的库
+运行后，会创建以下目录：
+•	data：Elasticsearch使用的所有数据的存储位置
+•	logs：关于事件和错误记录的文件
+•	plugins：存储所安装插件的地方
+•	work：Elasticsearch使用的临时文件
+16.Elasticsearch的配置下有两个文件elasticsearch.yml(或elasticsearch.json，如果有的话会被用)和logging.yml。第一个文件负责设置服务器的默认配置值，因为一些配置值可以在运行时更改，所以这个文件中的值可能不准确。有两个值不能在运行是更改，分别是cluster.name和node.name。
+cluster.name用来定义集群的名字，不同的集群用名字来区分，配置成相同集群名字的各个节点形成一个集群。
+node.name是实例的名字，可以不定义此参数，此时会自动生成一个。所以为了自已使用，还是最好自已定义一下。
+logging.yml定义了多少信息写入系统日志，定义了日志文件，并定期创建新文件。只有在调整监控、备份方案或系统调试时，才需要修改。
+在建立索引时，尤其是很多分片和副本的情况下，Elasticsearch将创建很多文件，所以系统不能限制打开的文件小于32000个。在linux上，一般在/etc/security/limits.conf中修改，当前的值可以用ulimit命令来查看。如果达到极限，Elasticsearch将无法创建文件，所以合并会失败，索引会失败，新的索引会失败。
+如果在日志文件中发现OutOfMemoryError异常的条目，把ES_HEAP_SIZE变量设置到大于1024.当选择分配给JVM合适内存大小时，记住，通常不应该分配超过50%的系统总内存。
+17.启动Elasticsearch后，一般使用2个端口号：第1个是使用HTTP协议与REST API通信的端口，第2个是传输模块，是用来在集群内以及Java客户端和集群之前通信的端口，前者是9200，后者是9300。在一个Elasticsearch上启动两次后，会启动两个实例，而且他们检测到端口冲突后，会自动选择新的端口。
+18.关闭集群有三种方法：
+•	在控制台，直接Ctrl+C
+•	通过kill命令来杀死
+•	使用REST API
+19.Elasticsearch作为系统服务。如果是在linux上安装的，则已经自动完成了。如果是解压的，则按以下步骤进行：
+1. curl -L http://github.com/elasticsearch/elasticsearch-servicewrapper/tarball/master | tar -xz 2. sudo mv *servicewrapper* /service/usr/local/share/elasticsearch/bin/ //将下载的服务封装软件移到elasticsearch的bin目录下 3. rm -Rf *servicewrapper* //移除原有的下载目录 4. sudo /usr/local/share/elasticsearch/bin/service/elasticsearch install //通过install命令来安装服务 5. sudo ln -s ‘readlink -f /usr/local/share/elasticsearch/bin/service/elasticsearch’ /usr/local/bin/rcelasticsearch //创建符号链接指向该脚本 6. /etc/init.d/elasticsearch start //启动Elasticsearch 
+如果是在windows上安装的，则执行：
+1. service.bat install 2. service.bat start 
+在命令行直接输入service.bat还可以查看其它的命令
+20.GET用来获得请求对象的当前状态，POST用来改变对象的当前状态，PUT创建一个对象，DELETE销毁对象，head`请求获取对象的基本信息。
+21.默认情况下,Elasticsearch在添加、更改或删除文档时会递增版本号。当然，它也可以使用我们提供给它的版本号。在版本存储在外部系统时，这是必要的。为了告诉elasticsearch我们使用的是外部版本号，需设置：version_type=external参数。
+22.默认情况下，删除的文档在60S内仍然可以查询版本信息，可以通过index.gc_deletes配置参数来更改这个值。
+23.为了搜索一个给定的类型，需要指定一个或多个类型。需要查找任意索引，直接*即可，或忽略索引名称。
+第1章 入门－命令
+•	查看搜索是否就绪：http://127.0.0.1:9200
+•	检查集群健康度：curl -XGET http://127.0.0.1:9200/_cluster/health?pretty,-X是一个参数方法，默认是GET（可忽略），pretty是使返回json串格式化，否则会返回一串。
+•	关闭整个集群：curl -XPOST http://127.0.0.1:9200/_cluster/nodes/_shutdown
+•	关闭集群某个节点：curl -XPOST http://127.0.0.1:9200/_cluster/nodes/abcdefg/_shutdown,abcdefg为某一节点的标识符。
+•	查看节点的标识符：curl -XGET http://127.0.0.1:9200/_cluster/nodes/
+•	查看集群中节点信息：curl -XGET http://127.0.0.1:9200/_cluster/state/nodes/
+•	存一条数据:curl -XPUT http://127.0.0.1:9200/blog/article/1 -d '{"id":"1","title":"Elasticsearch的新版本发布了！","content":"今天1.0版本发布","priority":10,"tags":["发布","elasticsearch","发布"]}',如果索引等不存在,会自动创建,这句话创建了一个名为blog的索引,创建了一个名为article的类型,这下面的对象的标识符设置为1,存了进去。-d表示后边是请求的主体。把PUT改为POST，后边的1就可以省略了，会自动生成标识符，这相当于修改了索引。另外，如果后边使用了数据库，标识符则不会自动生成，除非数据库中也存储生成标识符。
+•	取出刚才存的文档：curl -XGET http://127.0.0.1:9200/blog/article/1
+•	更新文档内容:curl -XPOST http://127.0.0.1:9200/blog/article/1/_update -d '{"script":"ctx._source.content=\"新内容\""}',此参数需要配置elasticsearch.yml中的配置文件,才可以使用。而且不同的版本配置参数名不同，我是1.7.1版本，所以配置的参数为：
+script.inline: on script.indexed: on 
+具体版本的配置方式参见：(https://www.elastic.co/guide/en/elasticsearch/reference/current/modules-scripting.html)
+•	为已经实体增加一个新字段curl -XPOST http://127.0.0.1:9200/blog/article/1/_update -d '{"script":" ctx._source.counter = 1 " }' ,下面是一个更复杂的例子:curl -XPOST http://127.0.0.1:9200/blog/article/1/_update -d '{"script":"if (!ctx._source.counter) {ctx._source.counter = 1};ctx._source.counter += count", "params": { "count": 1 }}'
+•	删除刚才存的文档：curl -XDELETE http://127.0.0.1:9200/blog/article/1
+•	使用外部版本号时,需指定,如:curl -XPUT 'localhost:9200/library/book/1?version=123456' -d {...},在做一些更新操作时,需保证版本号比现有的大,否则会操作失败。
+•	安装插件：elasticsearch/bin plugin -install mobz/elasticsearch-head
+•	访问已安装插件:http://127.0.0.1:9200/_plugin/head/
+一个例子
+1.输入数据：
+curl -XPUT http://127.0.0.1:9200/books/es/1 -d '{"title":"Elasticsearch Server","published":2013}' curl -XPUT http://127.0.0.1:9200/books/es/2 -d '{"title":"Mastering Elasticsearch","published":2013}' curl -XPUT http://127.0.0.1:9200/books/es/3 -d '{"title":"Apache Solr 4 cookbook","published":2012}' 
+2.查询：
+•	在某一索引内查找：curl -XGET 'http://127.0.0.1:9200/books/_search?pretty'
+•	在某两个索引内查找：curl -XGET 'http://127.0.0.1:9200/books,clients/_search?pretty'
+•	在某索引内某个类型下查找：curl -XGET 'http://127.0.0.1:9200/books/es/_search?pretty'
+•	在全部里面搜索：curl -XGET 'http://127.0.0.1:9200/_search?pretty'
+•	在books索引中title字段包含elasticsearch一词的所有文档：curl -XGET 'http://127.0.0.1:9200/books/_search?pretty&q=title:elasticsearch'
+{ "took" : 6,//花费时间,单位是毫秒 "timed_out" : false,//有没有超时 "_shards" : {//分片信息 "total" : 5, "successful" : 5,//成功返回结果的分片数量 "failed" : 0 }, "hits" : { "total" : 2,//查询结果总数 "max_score" : 0.19178301, //计算最高得分 "hits" : [ {//请求返回结果 "_index" : "books", "_type" : "es", "_id" : "1", "_score" : 0.19178301, "_source":{"title":"Elasticsearch Server","published":2013} }, { "_index" : "books", "_type" : "es", "_id" : "2", "_score" : 0.19178301, "_source":{"title":"Mastering Elasticsearch","published":2013} } ] } } 
+•	查看某一词建立的索引具体是什么:curl -XGET 'http://127.0.0.1:9200/books/_analyze?field=title' -d 'Elasticsearch Server'，可以看到，分成了两个词。
+•	URI查询行为：curl -XGET 'http://127.0.0.1:9200/books/_search?pretty&q=published:2013&df=title&explain=true&default_operator=AND'。
+o	参数q用来指定我们希望查询的条件
+o	df可以指定在q参数中没有字段时应该默认命名用的字段。默认使用使用_all字段。
+o	analyzer属性定义用于分析查询的分析器名称。默认情况下，索引阶段对字段内容做分析的分析器将用来分析我们的查询
+o	default_operator属性可以设置成OR或AND，用来指定用于查询的默认布尔运算符，指定查询条件间的关系。
+o	explain参数设置为true，将返回更加详细的信息，如文档从那个分片上获取的，得分多少。一般不使用这个参数，很影响性能。
+o	默认返回的文档中包括索引名称、类型名称、文档标识符、得分和_source字段。如想返回其它字段，可以用fields参数，并指定一个以逗号分隔的字段名称列表。这些字段将在内部存储字段或内部_source字段中检索。默认情况下，字段fields参数值是_source。也可以通过_source=false来禁用在_source中读取。
+o	结果排序：默认是根据得分排序。可以指定：sort=published:desc；sort=published:asc。如果自定义排序，则不会计算得分。可以通过设定track_scores=true来要求计算。
+o	默认情况没有超时发生，可以设定一个超时时间，timeout＝5，单位是秒。
+o	返回指定结果：size:默认是10，它定义了返回文档的最大数量，默认是10；from定义了结果应该从那个记录开始返回，默认为0。如从第11个开始返回5个文档：size=5&from=10
+o	URI查询允许使用search_type参数指定搜索类型，搜索类型默认为query_then_fetch。它共有dfs_query_then_fetch、dfs_query_and_fetch、query_then_fetch、query_and_fetch、count、scan。
+o	一些查询使用查询扩展如前辍查询(prefix query)。可以用lowercase_expanded_terms属性来定义扩展词是否应该被转化为小写。默认为true。
+o	默认情况下，通配符查询和前辍查询不会被分析。如果要分析，可以把analyze_ildcard属性设置为true。
+o	查询被lucene的查询解析器分为词term和操作符operator。title：book，title:”elasticsearch book”。操作符+表示必须匹配，操作符-表示不包含，没有+-的表示，可以匹配，但非强制性查询。如想找title包含book但description字段不包含cat一词的文档：+title:book -description:cat；也可以用括号来组合多个词title:{crime punishment}。还可以使用^来标识加强该词的相关性：title:book^4。
+o	
+《Elasticsearch服务器开发》学习笔记（二）
+第2章 映射配置(一)
+本系列是本人在学习《Elasticsearch服务器开发》一书中所做的读书笔记，如有读不懂的地方，请直接参考原书。建议直接购买原书，支持正版。
+1.	Elasticsearch是一个无模式的搜索引警,可以即时算出数据结构,但是自已控制并定义结构是更好的办法。
+2.	Elasticsearch是由一个或多个分片组成，每个分片包含了文档集的一部分。而且这些分片也有副本。在创建索引时，可以规定分片及副本的数量，也可以使用全局配置文件或软件内部的默认值。5个分片，1个副本，就意味着在集群中有10个lucene索引。副本可以随时调整，但是分片，则不能调整。创建好索引后更改分片的唯一图径是创建另外一个索引并重新索引数据。
+3.	直接创建一个索引curl -XPUT http://localhost:9200/blog。不让它自动创建索引是因为有时候要修改分片数目、设置索引结构。因此，可以关闭配置文件中自动创建索引的配置action.auto_create_index:-an*,+a,-*,上面的命令意思是说不允许自动创建以an开头的索引；允许自动创建以a开头的索引，其他的索引也必须手工创建。
+4.	一个手工设置分片及副本数量的例子curl -XPUT http://localhost:9200/blog/ -d '{"settings":{"number_of_shards":1,"number_of_replicas":2}}'
+5.	删除索引curl -XDELETE http://localhost:9200/posts
+6.	映射类似于关系数据库的数据结构。在定义映射时，Elasticsearch可以通过定义的JSON来猜测文档结构。在JSON中，字符串用引号括起来，布尔值用特定的词语定义，数值则是数字。但是，有时ES也会忽略数字类型，全按字符串来处理。可以使用如下命令来强制它进行文本检测。
+curl -XPUT http://localhost:9200/blog/ -d '{ "mappings":{ "article":{ “numberic_detection”:true } } } 但是，此时仍然不能猜出布尔型。在这种情况下，如果无法改变数据格式，只能在映射中定义字段。 还有日期类型，ES设法识别被提供的时间戳或与日期格式匹配的字符串，还可以使用dynamic_date_formats属性定义可被识别的日期格式列表，该属性允许指定一个数组，如下： curl -XPUT http://localhost:9200/blog/ -d '{ "mappings":{ "article":{ “dynamic_date_formate”:["yyyy-MM-dd hh:mm"] } } } 上面这段定义了一个叫`blog`的索引，它包括一个名为`article`的类型，它是日期型的，只识别固定的格式。ES使用`joda-time`库定义日期格式 为了避免不必要的错误，最好关闭自动识别类型。如同一类型，一个是整型，一个是浮点数，如果先接触到整型，则可能猜成整型，后面的就会丢失小数部分。关闭命令如下： curl -XPUT http://localhost:9200/blog/ -d '{ "mappings":{ "article":{ “dynamic”:“false”， “properties”：{ “id”：{“type”：“string”}， “content”：{“type”：“string”}， “author”：{“type”：“string”} } } } }' properties即为定义的字段，**如果传入数据时，还传入了其它字段，则ES会自动忽略。** 
+1.	在ES中，映射可以定义在文件中，以JSON对象的方式传送。新建一A.json文件，内容如下：
+{ "mappings":{ "post":{ “properties”：{ “id”：{“type”：“long”，“store”：“yes”，“precision_step”：“0”}， “name”：{“type”：“string”，“store”：“yes”，“index”：“analyzed”}， “published”：{“type”：“date”，“store”：“yes”，“precision_step”：“0”}， “contents”：{“type”：“long”，“store”：“no”，“index”：“analyzed”} } } } } 
+建立好文件后，就可以执行了：curl -XPOST 'http://localhost:9200/posts' -d @A.json
+2.	每个字段类型可以指定为ES提供的一个特定核心类型型。ES有以下特定核心类型
+o	string：字符串
+o	number：数字
+o	date：日期
+o	boolean：布尔型
+o	binary：二进制。
+3.	数值字段类型：
+o	byte:字节值，例如1
+o	short:短整型值，如12
+o	integer：整型值，如134
+o	long：长整型值，如：123456789
+o	float：浮点型，如：12.23
+o	double：双精度，如：123.45
+4.	公共属性
+o	index_name:存储在索引中的字段名称，若未定义，则存储对象的名字。
+o	index：属性为analyzed：该字段将被编入索引以供搜索，这也是默认值；no则无法搜索该字段，而且此时include_in_all属性无效；not_analyzed:意味着字段不经分析而编入索引，也就是说不分词，全部匹配。
+o	store：yes指定该字段原始值写入到索引中，默认为no，默认值意味着在结果中不能返回该字段，该值编入了索引，就可基于它来搜索数据。如果使用_source字段，即使没有存储也可返回这个值。
+o	boost：该属性的默认值是1。定义了字段的重要性，值越高，重要性越大。
+o	null_value:该字段并非索引文档的一部分，此属性指定写入索引的值。默认的行为是忽略该字段。
+o	copy_to:此属性指定一个字段，字段的所有值都将复制到该指定字段。
+o	include_in_all:此属性指定该字段是否应包括在_all字段中。默认情况下，如果使用_all字段，所有的字段都会包括在其中。
+5.	字符串属性，对于字符串，除了以上公共属性，还有许多额外的属性。
+o	term_vector:默认为no，还可以设为yes、with_offsets、with_positions及with_positions_offsets。它定义是计算该字段的Lucenne词向量，如果要使用高亮功能，就需要计算词向量。
+o	omit_norms:对于经过分析的字段，默认为false；未经过分析但已编入索引的字符串字段，为true。为true时，会禁用Lucene对该字段进行加权基准计算，这样就无法使用索引期间的加权，从而为只用于过滤器中字段节省内存。
+o	analyzer：该属性用于定义索引和搜索的分析器名称。默认为全局定义的分析器名称。
+o	index_analyzer:该属性定义用于建立索引的分析器的名称。
+o	search_ayalyzer:该属性用于定义搜索的分析器名称。
+o	norms.enabled:指定是否为字段加载加权基准。默认情况下，为已分析字段设置为true，未分析字段设置为false。
+o	norms.loading:eager表示此字段总是载入加权基准，lazy表示需要时再加载。
+o	position_offset_gap:默认为0。指定索引中在不同的实例中具有相同名称的字段的差距。如基于位置的，若只想查出一个字段，可以设得较高点。
+o	index_options:定义了信息列表的索引选项。docs:仅对文档编号建立索引；freqs：对文档编号和词频建立索引；positions：对文档编号、词频和它们的位置建立索引；offsets对文档编号、词频、位置和偏移量进行索引。对于经分析的字段，默认值是positions;未经分析的字段，默认值是docs。
+o	ignore_above：定义字段中字符的最大值，当字段的长度高于指定值时，分析器会将其忽略。
+6.	数值属性，除了公共属性，数值还有如下属性：
+o	precision_step:指定为某个字段中的每个值生成的词条数。值越底，产生的词条数越高。对于每个值的词条数更高的字段，范围查询会更快，但索引会更大点。默认址是4。
+o	ignore_malformed：此属性为true时，忽略格式错误的值；false不忽略。
+7.	布尔型："allowed":{"type":"boolean","store":"yes"}
+8.	二进制：该字段用Base64表示，可以用来存储二进制形式正常写入的数据，如图像。它只能被存储，不能被索引，不能搜索。它只支持index_name属性。基于binary字段的定义示例如下："allowed":{"type":"binary"}
+9.	日期：默认使用UTC保存，它允许指定时间，也允许指定日期。如2012-12-24T12:10:22,示例如下："published":{“type”:"date","store":"yes","format":"YYYY-mm-dd"}。除了公共属性，它的主要属性有：
+o	format，默认值为：dateOptionalTime。
+o	precision_step:指定为某个字段中的每个值生成的词条数。值越底，产生的词条数越高。对于每个值的词条数更高的字段，范围查询会更快，但索引会更大点。默认址是4。
+o	ignore_malformed：此属性为true时，忽略格式错误的值；false不忽略。
+10.	多字段：有时候希望两个字段中有相同的字段值，如一个用来搜索，一个用于排序或一个经语言分析器分析、一个只基于空白字符分析。ES允许加入多字段对象来实现。下面是一个例子：
+"name":{ "type":"string", "fields"：{ "facet":{"type":"string","index":"not_analyzed"} } } 
+上面的代码创建了两个字段一个是”name”,一个是”name.facet”。在索引中不必指定两个字段，只指定一个name就够了。ES会自动将该字段的数值复制到多字段定义的所有字段中。
+11.	IP地址类型：下面是一个例子："address":{"type":"ip","store":"yes"},IP类型还有一人额外的属性：
+o	precision_step:指定为某个字段中的每个值生成的词条数。值越底，产生的词条数越高。对于每个值的词条数更高的字段，范围查询会更快，但索引会更大点。默认址是4。
+12.	token_count类型：允许存储有关索引的字数信息，而不是存储及检索该字段的文本。它接受与number类型相同的配置选项，还可以用analyzer属性来指定分析器。例子"address_count":{"type":"token_count","store":"yes"}
+13.	对于字符串，可以指定使用的分析器，分析器是一个用于分析数据或以我们想要的方式查询数据的工具。ES使我们能够在索引和查询时使用不同的分析器，并且可以在使搜索过程中的每个阶段选择处理数据的方式。ES默认带了若干分析器，如下的分析器开箱即用：
+o	standard:方便大多数欧洲语言的标准分析器。
+o	simple:这个分析器基于非字母字符来分离所提供的值，并将其转换为小写形式。
+o	whitespace:这个分析器基于空白字符来分离所提供的值。
+o	stop:类似于simple，除了simple的功能，还能基于所提供的停用词过滤数据。
+o	keyword:只传入提供的值。可以通过指定字段为not_analyzed来达到相同的目的。
+o	pattern:通过正则表达式灵活的分离文本。
+o	language:这个分析器旨在特定的语言环境下工作。
+o	snowball:类似于standard分析器，但提供了词干提取算法。
+14.	自定义分析器。ES允话自定义分析器，无需编写java代码。自定义分析器需要在配置文件中新增setting节点，示例代码如下：
+"settings":{ "index":{ "analysis":{ "analyzer":{ "en":{ "tokenizer":“standard”， "filter"：[ "asciifolding", "lowercase", "ourEnglishFilter" ] } }, "filter"：{ "ourEnglishFilter":{ "type":"kstem" } } } } 
+上例中指定一个新的名为en的分析器。每个分析器由一个分词器和多个过滤器构成。默认过滤器和分词器完整列表参见官方文档。我们的en分析器包括standard分词器和三个过滤器：默认情况下可用asciifolding、lowercase，以及一个自定义的ourEnglishFilter。要想自定义过滤器，需要提供它的名称、类型以及该过滤器类型所需要的任意数量的附加参数。所以最终版本如下：
+{ "settings":{ "index":{ "analysis":{ "analyzer":{ "en":{ "tokenizer":“standard”， "filter"：[ "asciifolding", "lowercase", "ourEnglishFilter" ] } }, "filter"：{ "ourEnglishFilter":{ "type":"kstem" } } } } }, "mappings"：{ "post":{ "properties":{ "id":{"type":"long","store":"yes","precision_step":"0"}, "name":{"type":"string","store":"yes","index":"analyzed","analyzer":"en"} } } } 
+15.	要求ES展示为Post类型和它的name字段定义的分析器对指定短语的分析内容：curl -XGET 'localhost:9200/posts/_analyze?pretty&field=post.name' -d 'robots cars'
+16.	分析器字段：可以用分析器字段(_analyzer)来指定一个字段，该字段的值将作为字段所属文档的分析器名称。应该定义一个与下列language字段中提供的值一样的分析器，否则会索引失败。示例如下：
+{ "mappings":{ "post":{ "_analyzer":{ "path":“language” }， "properties"：{ "id":{"type":"long","store":"yes","precision_step":"0"}, "name":{"type":"string","store":"yes","index":"analyzed"}, "language":{"type":"string","store":"yes","index":"not_analyzed"} } } } } 
+17.	在没有定义分析器的情况下，应指定在默认情况下使用的分析器。这与在眏射文件中的setting部分配置自定义分析器的方式相同，但应使用default关键字来命令。因此，为了把前面的自定义分析器作为默认的分析器，可以将en分析器修改为下面这样：
+{ "settings":{ "index":{ "analysis":{ "analyzer":{ "default":{ "tokenizer":“standard”， "filter"：[ "asciifolding", "lowercase", "ourEnglishFilter" ] } }, "filter"：{ "ourEnglishFilter":{ "type":"kstem" } } } } } }
+
+
+第2章 映射配置(二)
+本系列是本人在学习《Elasticsearch服务器开发》一书中所做的读书笔记，如有读不懂的地方，请直接参考原书。建议直接购买原书，支持正版。
+________________________________________
+1.	lucene 4.0后，允许修改默认的基于TF/IDF的算法。4.0还附加了相似度模型，允许在文档中使用不同的评分公式。
+2.	为每个字段设置不同的相似度模型。如下例子：
+{ "mappings":{ "post":{ “properties”：{ “id”：{“type”：“long”，“store”：“yes”，“precision_step”：“0”}， “name”：{“type”：“string”，“store”：“yes”，“index”：“analyzed”,"similarity":"BM25"}， “published”：{“type”：“date”，“store”：“yes”，“precision_step”：“0”}， “contents”：{“type”：“long”，“store”：“no”，“index”：“analyzed”},"similarity":"BM25" } } } } 
+可给name字段和contents字段中使用BM25相似度模型，修改如下：
+{ "mappings":{ "post":{ “properties”：{ “id”：{“type”：“long”，“store”：“yes”，“precision_step”：“0”}， “name”：{“type”：“string”，“store”：“yes”，“index”：“analyzed”,"similarity":"BM25"}， “published”：{“type”：“date”，“store”：“yes”，“precision_step”：“0”}， “contents”：{“type”：“long”，“store”：“no”，“index”：“analyzed”,"similarity":"BM25"} } } } } 
+3.	可用的相似度模型：
+o	Okapi BM25模型：基于概率模型，概率模型估算根据指定查询找到指定文档的概率。这种模型在处理简短的文本文档时表现最佳，在这种文档中词条的重复严重有损整体文档的得分。它使用BM25作为名称。
+o	随机性偏差模型：基于具有相同名称的概率模型。为了在ES中全名用，以DFR为名称。它在处理类自然语言时表现良好。它的配置如下：
+	basic_model：值为be、d、g、if、in或ine。
+	after_effect：值为no、b或l
+	normalization：值为no、h1、h2、h3或z。它的值如果不是no，则还需要设置范式化因子normalizationfactor。即，如果它的值是h1，则设置normalization.h1.c(浮点值)；如果是h2，则，则设置normalization.h1.c(浮点值)\normalization.h2.c\normalization.z.z
+	一个典型的配置例子
+"similarity":{ “esserverbook_dfr_similarity”：{ “type”：“DFR”， “basic_model”：“g”， “after_effect”：“l”， “normalization”：“h2”， “normalization.h2.c”：“2.0” } 
+o	信息基础模型：与随机性偏差模型相似，以IB为名称，它也在处理类自然语言时表现良好。它有以下参数可供设置：
+	distribution:值为ll或spl。
+	lambda属性：df和tff。它也可设置范式化因子。下面是一个例子（也是放到settings部分中。）
+	一个例子：
+"similarity":{ “esserverbook_ib_similarity”：{ “type”：“IB”， “distribution”：“ll”， “lambda”：“df”， “normalization”：“z”， “normalization.z.z”：“0.25” } 
+4.	信息格式：Lucene4.0可以改变索此文件写入的方式。ES利用此功能，可以为每个字段指定信息格式。有时需要改变字段被索引的方式以提高性能，比如为了使主键查找更快。ES中的信息格式如下：
+o	default:没有明确格式时，此默认信息格式将被使用。它提供了实时的对存储字段和词量的压缩。压缩内容参见
+o	pulsing:它将高基数字段的信息列表编码为词条矩阵。这让lucene检索文档时可以少执行一个搜索。对高基数字段使用此信处式可以加快此字段的查询速度。（高基数字段：基数越高时，字段的重复值越少，可选性越高。）
+o	direct：此格式可在读操作过程中将词条加载到矩阵中。这些矩阵未经压缩保存在内存中。所以点用内存量特别大，要慎重。
+o	memory：将所有的数据都写入内存，但需要一个名为FST的结构读取词条和信息列表到内存中。
+o	bloom_default:默认信息扩展，增加了把布隆过滤器写入磁盘的功能。在读取过程中，布隆过滤器被读入并存入内存，以便非常快速地检查给定的值是否存在。此格式对高基数字相当有效。
+o	bloom_pulsing:这是pulsing信息格式的扩展，除了pulsing格式的功能，还使用了布隆过滤器。
+信息格式可在每个字段上设置，就像type和name。为了把字段配置成默认格式以外的格式，添加添加一个postings_format的属性，将所选择信息格式的名字作为值，下面是一个例子：
+{ "mappings":{ "post":{ “properties”：{ “id”：{“type”：“long”，“store”：“yes”，“precision_step”：“0”,"postings_format":"pulsing"}， “name”：{“type”：“string”，“store”：“yes”，“index”：“analyzed”,"similarity":"BM25"}， “published”：{“type”：“date”，“store”：“yes”，“precision_step”：“0”}， “contents”：{“type”：“long”，“store”：“no”，“index”：“analyzed”,"similarity":"BM25"} } } } } 
+5.	文档值格式是Lucene4.0引入的另一个新功能。它允许定义一个给定的字段，这个字段的值被写入一个具有较高内存效率的列式结构，以便进行高效的排序和切面搜索。使用了文档值的字段将有专属的字段数据缓存实，无需像标准字段一样倒排。因此，它全名索引刷新操作速度更快，让你可以在磁盘上存储字段。如增加个投票字段,并且希望对它进行排序。因为需求排序，所以就很适合使用文档值。示例(doc_values_format)：
+{ "mappings":{ "post":{ “properties”：{ “id”：{“type”：“long”，“store”：“yes”，“precision_step”：“0”,"postings_format":"pulsing"}， “name”：{“type”：“string”，“store”：“yes”，“index”：“analyzed”,"similarity":"BM25"}， “published”：{“type”：“date”，“store”：“yes”，“precision_step”：“0”}， “contents”：{“type”：“long”，“store”：“no”，“index”：“analyzed”,"similarity":"BM25"}, “votes”：{“type”：“integer”，"doc_values_format":"memory"} } } } } 
+目前doc_values_format属性共有以下三个值：
+o	default:当未指定任何格式时，使用此默认格式。此格式使用少量内存而且性能良好。
+o	disk：此文档值格式将数据存入磁盘，几乎无需内存。然而，在执行切面和排序操作时，性能略有降低。需要执行切面或排序操作，而又苦恼于内存空间时，可使用此格式。
+o	memory：此文档格式将数据存入内存。在这种格式中，切面或排序的功能与标准倒排索引字段的功能不相上下。由于这种数据结构存储于内存中，索引的刷新速度更快，而这对快速更改索引及缩短索引更频率很有帮助。
+6.	为索引批量添加数据：ES可以合并多个请求至单个包中，然后这些包可以单个请求的形式传达，所以，可以将如下操作结合起来：
+o	在索引中增加或更换现有文档
+o	从索引中移除文档
+o	当索引不存在其他文档定义时，在索引中增加新文档。
+为了达到如上的需求，格式为：第一行是包含描述操作说明的JSON对象，第二行是JSON对象本身。唯一的例外是delete操作，它只包含信息行。例子如下：
+{"index":{"_index":"addr","_type":"contact","_id":1}} {"name":"Fyodor Dostoevsky","country":"RU"} {"create":{"_index":"addr","_type":"contact","_id":2}} {"name":"Erich Maria Remarque","country":"DE"} {"create":{"_index":"addr","_type":"contact","_id":2}} {"name":"Joseph Heller","country":"US"} {"delete":{"_index":"addr","_type":"contact","_id":4}} {"delete":{"_index":"addr","_type":"contact","_id":1}} 
+重要的是，每一个文档或操作说明放置在一行中（以换行符结束），这意味着无法美化文档格式，批量索引文件的大小存在限制，它被设定为100M。这个属性在配置文件中的http.max_content_length属性来改变。
+7.	为了执行批量请求，ES提供了_bulk端点，形式可以是/_bulk,也可以是/index_name/_bulk,甚至是/index_name/type_name/_bulk，在第二种和第三种形式定义了索引名称和类型名称的默认值。可以在请求的信息中省略这些属性，ES将使用默认值。运行上边这个JSON文件的命令如下：
+curl -XPOST 'localhost:9200/_bulk?pretty' --data-binary @documents.json
+注意，在这个命令中，没有使用-d，而是使用了--data-binary参数，这是因为不能忽略换行符。
+如果想更快，可以用UDP的批量操作，请注意，使用UDP并不能保证数据包是否会丢失，所以，只在在性能比精确度更重要时，并且要索引全部的文档时，才考虑用它。
+8.	用附加的内部信息扩展索引结构，这些字段类型应定义在适当的类型级别上，它们不是索引范围内的类型。
+9.	ES索引中的每个字段都有自已的标识符和类型，在ES内中，文档存在两种标识符：
+o	_uid字段它是索引文档中的唯一标识符，由该文档的标识符和文档类型构成。也就是说，同一个索引中，不同类型的文档可能有相同的标识符。此字段不需要额外设置，总是被索引，是自动的。
+o	_id字段，此字段存储着过索引时设置的实际标识符。为了使_id字段能够被索引/存储，需要在映射文件中像设置其他属性一样添加_id字段的含义。一个指明希望_id字段不经分析但要编入索引，而且不希望存储的例子：
+{ "book":{ "_id":{ "index":"not_analyzed", "store":"no" }, "properties":{ . . . } } } 
+除了在索引时间指定标识符，也可从索引文档的一个字段中获取标识识（需要额外解析，比较慢）。为此，需要设定path属性，将将它的值设置为一个字段名称，该字段的值将作为标识符。如将book_id的值作为指定标识符的值：
+{ "book":{ "_id":{ "path":"book_id" }, "properties":{ . . . } } } 
+当禁用_id字段时，所有需要文档唯一标识符的功能都能继续工作。
+10.	_type：由于每个文档至少需要它的标识符和类型来描述，默认情况下，文档的类型会编入索引，但不会被分析及存储。如果想存储，可以按如下方式修改：
+{ "book":{ "_type":{ "store":"yes" }, "properties":{ . . . } } } 
+也可改成不索引_type字段，但是如果这样，一些查询（词条查询）和过滤器将失效。
+11.	_all字段：它用来存储其他字段中的数据以便于搜索。当要执行简单搜索功能，搜索所有数据（或复制到_all字段的所有字段），又不想考虑字段名称之类的事件，这个字段很有用。它默认是启用的，包含了索此中所有字段的所有数据，这使得索引有点大，且不必要，可以完全禁它或排除某些字段，排除特字字段使用include_in_all属性。要完全关闭_all字段功能，可修改映射文件，如下：
+{ "book":{ "_all":{ "enabled":"false" }, "properties":{ . . . } } } 
+除了enabled属性，_all字段还支持以下属性：store、term_vector、analyzer、index_analyzer、search_analyzer,这些属性的具体意思，可向上参阅。
+12.	_source字段可以在生成索引的过程中存储发送到Elasticsearch的原始JSON文档。默认情况下，_Source字段会被开启，因为部分ES的功能依赖于这个字段（如局部更新功能）。此外，当字段没有存储时，_source字段可用作高亮功能的数据源。如果不需要，可以禁用。方式如下：
+{ "book":{ "_source":{ "enabled":"false" }, "properties":{ . . . } } } 
+如果只想包含某些字段或排除某些字段，可以使用includes或excludes属性来实现。下面是一个排除的例子：
+{ "book":{ "_source":{ "excludes":["author.*"] }, "properties":{ . . . } } } 
+13.	_index字段:ES允许我们存储文档相关的索引信息，可以通过内部的_index字段做到这一点。它可以帮助我们确定文档源自那个索引。默认情况下，_index字段是禁用的。启用方式如下：
+{ "book":{ "_index":{ "enabled":"true" }, "properties":{ . . . } } } 
+14.	默认情况下，_size字段未启动，这使我们能够自动索引_source字段的原始大小，与并文件一起存储。下面是一个在映射文件中把_size字段启用并存储的例子：
+{ "book":{ "_size":{ "enabled":"true", "store":"yes" }, "properties":{ . . . } } } 
+15.	默认情况下，禁用的_timestamp字段允许文档在被索引时存储。默认_timestamp字段未经分析编入索引，不保存。它和普通日期字段一样，因而可以像处理普通字段一样改变它的格式。另外，它还可以添加path属性，并将其设置为某字段的名称来获取日期，而不是在文件检索过程中自动创建_timestamp字段。
+{ "book":{ "_timestamp":{ "enabled":"true", "path":"year", "format":"YYYY" }, "properties":{ . . . } } } 
+如果使用本字段，且让ES自动创建它，则该字段的值会被设置为文档索引的时间。但是，局部文档更新时，该字段也将被更新。
+16.	_ttl（time to live）生存时间，它允许定义文档的生命周期，周期结束之后文档会被自动删除。默认情况上禁用的。启用方式如下：
+{ "book":{ "_ttl":{ "enabled":"true" }, "properties":{ . . . } } } 
+若要提供文件的默认过期时间，可作如下设置：
+{ "book":{ "_ttl":{ "enabled":"true", "default":"30d" }, "properties":{ . . . } } } 
+默认情况下，_ttl值未经分析即存储和索引。可以改变这两个参数，但是记住这两个参数要未经分析才能工作。
+17.	段合并：由于Lucene库及ES中一旦数据被写入，说不再改变。所以删除需要额外记录，以应用到搜索过程中。段合并，就底层的lucene库获取若干段，并在这些信息的基础上创建一个新的段，然后将原来的段在磁盘上删除。这是因为段合并在CPU和I/O的使用方面代价是相当高的，所以要适当的控制这个过程被调用的机率。
+18.	段合并策略
+o	tiered：默认合并策略，合并尺寸大致相似的段，并考虑到每个层允许的最大段数量。
+o	log_byte_size:随着时间的推移，将产生由索引大小的对数构成的索引，基中存在着一些较大的段及一些合并因子较小的段。
+o	log_doc:类似log_byte_size,但根据索引中的文档数而非段的实际字节数来操作。
+可使用index.merge.policy.type属性来设置想使用的合并策略。index.merge.policy.type:tiered,当然，这个值在索引创建后无法再修改。
+19.	合并调度器指示ES合并过程的方式，有如下两种可能：
+o	并发合并调度器，这是默认的合并过程，在独立的线程中执行，定义好的线程数量可以并行合并。
+o	串行合并调度器：这一合并过程在调用线程（即执行索引的线程）中执行。合并进程会一直阻塞线程直到合并完成。
+调度器可使用index.merge.scheduler.type参数设置，若要使用串行合并调度器，需设置值为serial;并行为concurrent。index.merge.scheduler.type:concurrent
+20.	合并因子指定了索引过程中段合并的频率。因子较小，搜索的速度更快，占用的内存也更少，但索引的速度会变慢；合并因子大时，则索引速度加快，这是因为发生的合并少，但搜索的速度慢，占用的内存也大。对于log_byte_size和log_doc合并策略，可通过index.merge.policy.merge_factor参数来设置合并因子。它的默认值是10,建议在批量索引时设置更高的值，普通的索引维护则设置较低的属性值。index.merge.policy.merge_factor:10
+21.	调节：由于合并时可能会严重影响性能，所以调节可能会改变这一状况。它即可以限制合并的速度，也可以使用数据存储的所有操作。这个参数可以通过配置文件中配置，也可以动态通过api来设置。它有两个设置：
+o	indices.store.throttle.type:none,不打开；merge：该值定义调节仅在合并过程中有效；all：该值定义调节在所有数据存储过程中有效。
+o	indices.store.throttle.max_bytes_per_sec:10mb。限制合并操作为每秒10M。默认情部分下，ES使用merge调节类型，max_bytes_per_sec属性设置为20mb。这意味着所有的合并操作都限于20M/秒。
+22.	默认情况下，ES会在所有索引的分片中均匀地分配文档，但是，有时为了获取文档，需要查询所有分片并合并结果。如果把数据按照一定的依据来划分，就可以使用一个强大的文档和查询分布控制机制：路由。它允许选择用于索引和搜索数据的分片。
+23.	默认索引过程：发送文档旮，ES会计算文档标识符的散列值，以此为基础将文档放置于一个可用的主分片上。然后，这些文档被重新分配置副本。
+24.	默认搜索过程：查询发送到ES的一个节点，ES将会根据搜索类型来搪行查询。它首先查询所有节点得到标识符和匹配文档的得分，接着发送一个内部查询，但仅发送到相关的分片（包含文档的分片），最后获取所需文档来构建响应。
+25.	路由可以控制文档和查询转发的目的分片。可以在索引和查询时都指定路由值。如，索引时使用userId值来设置路由，在搜索时也一样。由于userId值一样，计算出的散列值是相同的，因而特定用户的所有文档将被放置在相同的分片中，这样，在搜索中使用相同的属性值，则只需搜索单个分片而不是整个索引。
+使用路由时，仍然应该为路由值相同的值添加一个过滤器。因为路由值的数量或许比索引分片的数量多。因此，一些不同的属性值可以指向相同的分片，如果忽略过滤，得到的数据并非是路由的单个值，而是特定分片驻留的所有路由值。
+26.	最简单的方法是使用路由参数来提供路由值。索引或查询时，可以添加路由参数到HTTP，或使用你所选择的客户端来设置。示例如下：
+添加文档：
+curl -XPUT 'http://localhost://9200/posts/post/1?routing=12' -d '{ "id":1, "name":"Test Document", "contents":"Test document", "userId":12 }' 
+查询例子：
+curl -XGET 'http://localhost:9200/posts/_search?routing=12&q=userId:12' 
+可以看到，索引和查询需要使用相同的值。如果指定了多个路由值，并由逗号分隔开来。如果还想在查询中使用section参数来路由，并根据这个参数过滤，查询将会如下所示：
+curl -XGET 'http://localhost:9200/posts/_search?routing=12,6654&q=userId:12+AND+section:6654' 
+为每个发送到ES的请求指定路由值并不方便。所以在索引过程中，ES允许指定一个字段，用该字段的值作为路由值，这样只需要在查询时提供路由参数。指定示例如下：
+"_routing":{ "required":true, "path":userId } 
+上边意思是说查询时必须提供路由器，否则索引请求将失败。path用来指定文档的那个字段应被设置为路由器。这意味着，每个文档userId都必须定义。但是，使用路由字段时，ES需要一些额外的解析，因此比使用路由参数时慢一些。
+添加路由部分后的映射文件如下所示：
+{ "mappings":{ "post":{ "_routing":{ "required":true, "path":userId }, “properties”：{ “id”：{“type”：“long”，“store”：“yes”，“precision_step”：“0”,"postings_format":"pulsing"}， “name”：{“type”：“string”，“store”：“yes”，“index”：“analyzed”,"similarity":"BM25"}， “published”：{“type”：“date”，“store”：“yes”，“precision_step”：“0”}， “contents”：{“type”：“long”，“store”：“no”，“index”：“analyzed”,"similarity":"BM25"}, “votes”：{“type”：“integer”，"doc_values_format":"memory"} } } } } 
+如果想用上述映射来创建Posts索引，可以用下面的命令来为单个测试文档建立索引：
+curl -XPOST 'localhost:9200/posts/post/1' -d '{ "id":1, "name":"Test Document", "contents":"Test document", "userId":12124 }' 
+12124将作为索引时的路由值。
+
+《Elasticsearch服务器开发》学习笔记（四）
+第3章 搜索(一)
+本系列是本人在学习《Elasticsearch服务器开发》一书中所做的读书笔记，如有读不懂的地方，请直接参考原书。建议直接购买原书，支持正版。
+________________________________________
+1.	查询：curl -XGET 'localhost:9200/library/book/_search?q=title:crime&pretty=true'，另外一种查询方式：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"query":{"query_string":{"query":"title:crime"}}}'
+2.	分页和结果集大小：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"from":9,"size":20,"query":{"query_string":{"query":"title:crime"}}}'
+from:该属性指定我们希望在结果中返回的起始文档。它的默认值是0，表示想要得到从第一个文档开始的结果。
+size:该属性指定了一次查询中返回的最大文档数，默认值是10.如果只对切面结果感兴趣，并不关心文档本身，可以把这个参数设置成0。
+3.	ES可以返回版本信息的查询。查询命令如下：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"version":true,"query":{"query_string":{"query":"title:crime"}}}'
+4.	ES让我们可以根据文档需要满足的最低得分值，来过滤结果。为了用此功能，必须在JSON顶层提供min_score属性和最低得分值。如我们希望查询只返回得分高于0.75的文档，可以按如下方式查询：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"min_score":0.75,"query":{"query_string":{"query":"title:crime"}}}'
+5.	在请求主体中使用字段数组，可以定义在响应中包含的字段，当然只能返回那些在用于创建索引的映射中标记为存储的字段，或都使用了_source字段。如，只返回title和year字段，查询如下：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"fields":{"title","year"},"query":{"query_string":{"query":"title:crime"}}}'。如果没有定义fields数组，它将用默认值，如果有，就返回_source字段。如果使用_source字段，并且请求一个没有存储的字段，那么这个字段将从_source段中提取。如果想返回所有的存储字段，只需传入星号(*)作为字段名字。从性能的角度讲，返回_source字段比返回多个存储字段更好。
+6.	部分字段，通过它可以查询包含或排除某些字段，如：查询以titl开头，且排除以chars开头的字段，如下：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"partial_fields":{"partial1":{"include":["titl*"],"exclude":["chara*"]}},"query":{"query_string":{"query":"title:crime"}}}'
+7.	可以在ES中返回脚本计算字段：在JSON的查询对象中加上script_fields部分，添加上每个想返回的脚本值的名字。若要返回一个叫correctYear的值，它用year字段减去1800来计算，方式如下：
+curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"script_fields":{"correctYear":{"script":"doc[\"year\"].value-1800"}},"query":{"query_string":{"query":"title:crime"}}}'
+原书中这儿是错误的，原书中doc[\"year\"]为doc['year'],这种写法会报错，执行端错误如下：GroovyScriptExecutionException[NullPointerException[Cannot invoke method minus() on null object]],服务器端错误如下：Failed to execute fetch phase org.elasticsearch.script.groovy.GroovyScriptExecutionException: MissingPropertyException[No such property: year for class:
+doc可以让我们捕获了返回结果，从而让脚本执行速度更快，但也导致了更高的内存消耗，并且限制了只能用单个字段的单个值。如果关心内存的使用，或者是使用更复杂的字段值，可以用_source字段，如下所示：curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"script_fields":{"correctYear":{"script":"_source.year-1800"}},"query":{"query_string":{"query":"title:crime"}}}'
+8.	脚本还可以传入额外的参数，使用一个变量名称来接收，示例如下：
+curl -XGET 'localhost:9200/library/book/_search?pretty=true' -d '{"script_fields":{"correctYear":{"script":"_source.year-paramYear","params":{"paramYear":1800}}},"query":{"query_string":{"query":"title:crime"}}}'
+9.	ES查询过程：查询先发送到ES的其中一个节点，这时是发散阶段，查询分布到建立索引的所有分片上，如果它建立在5个分片和1个副本基础上，那么，5个分片都会被查询，查询返回文档的标识符及得分，分散查询的节点等所有分片完成任务后，收集结果并进行排序（得分从低到高），之后，将发送一个新的请求来生成搜索结果，这次查询只发送到那些持有响应所需文档的分片上。这一阶段称为收集阶段。
+ES允许通过指定搜索类型来选择查询在内部如何处理，不同的搜索类型适合不同的情况。可使用search——type请求参数，并将其设置为下列值之一：
+o	query_then_fetch:第一步，执行查询得到对文档进行排序和分级所需信息，这一步在所有的分片上执行。然后，只在相关分片文档上查询文档的实际内容。不同于query_and_fetch,此查询类型返回结果的最大数量等于size参数的值。这也是默认的搜索类型。
+o	query_and_fetch：这通常是最快也最简单的搜索类型实现。查询在所有分片上并行执行，所有分片返回等于size值的结果数。返回文档的最大数量等于size的值乘以分片的数量。
+o	dfs_query_and_fetch：这个和query_and_fetch相似，但比query_and_fetch包含一个额外的阶段，在初始查询中执行分布式词频的计算，以得到返回文件的更精确的得分，从而让查询结果更相关。
+o	dfs_query_then_fetch：也多一个计算得分阶段。
+o	count：这是一个特殊的搜索类型，只返回匹配查询的文档数。如果你只需要结果数量，而不关心文档，应该使用这个类型。
+o	scan：这是另外一个类型的搜索类型，只有在要让查询返回大量结果时才用。它跟一般的查询有点不同，因为它在第一次请求后，返回一个滚动标识符，类似于数据库中的游标。所有查询需要在_search/scroll REST端点运行，并需要在请求主体中发送返回的滚动标识符。
+示例命令如下：
+curl -XGET 'localhost:9200/library/book/_search?pretty=true&search_type=query_and_fetch' -d '{"query":{"term":{"title":"crime"}}}' 
+10.	除了可以控制查询是如何执行的，也可以控制在那些分片上执行查询。默认情况下，ES使用的分片和副片，既包含我们已经发送请求的可用节点，又包括集群中的其它节点。默认情况下，默认行为是最佳的查询首先方法，若要改变，可设置下面的值：
+o	_primary:只在主分片上执行搜索，不使用副本。当想使用索引中最近更新的，还没有得制到副本中的信息，这是很有用的。
+o	_primary_first:如果主分片可用，只在主分片上执行搜索，否则才在其他分片上执行。
+o	local：在可能的情况下，只在发送请求的节点上的可用分片上执行搜索。
+o	only_node:node_id:只在提供标识符的节点上执行搜索
+o	prefer_node:node_id:ES尝试在提供标识符的节点上执行搜索，如果该节点不可用，则使用其他的可用节点。
+o	shards：1,2：ES将在提供标识符的分片上执行操作。_shards参数可以和其他首选项合并，但_shards标识符必须在前面，比如_shards:1,2;_local
+o	自定义值：可以传入任何自定义字符串值，具有相同值的请求将在相同的分片上执行。
+下面是一个例子：
+curl -XGET 'localhost:9200/library/_search?preference=_local' -d '{"query":{"term":{"title":"crime"}}}' 
+11.	ES搜索分片API允许检查将执行查询的分片，若要查看查询如何执行，示例如下：
+curl -XGET ‘localhost:9200/library/_search_shards?pretty’ -d ‘{“query”:{“match_all”:{}}’
+12.	词条查询：它仅匹配在给定字段中含有该词条的文档，而且是确切的、单个未经分析的词条。{"query":{"term":{"title":"crime"}}},之所以使用小写开头的crime，是因为Crime在建索引时已经变成了crime。
+还可以包含加权属性，它影响给定词条的重要程度。5.1会详细讲。下面是一个例子：{"query":{"term":{"title":{"value":"crime","boost":10.0}}}
+13.	多词条查询允许匹配那些在内容中含有某个词条的文档。词条查询允许匹配单个未经分析的词条，多词条查询可以用来匹配多个这样的词条。如想得到在所有在tags字段中含有novel或book的文档，可以使用以下命令：{"query":{"terms":{"tags":["novel","book"],"minimum_match":1}}}
+由于设置了mininum_match,这意味着至少1个词条应该配置。
+14.	match_all可以匹配索引中的所有文档。{"query":{"match_all":{}}},也可以使用加权值，它将赋给所有跟它匹配的文档：{"query":{"match_all":{"boost":2.0}}}
+15.	常用词查询是在没有使用停用诩的情况下，为了提高常用词的查询相关性和精确性而提供的一个现代解决方案。如’aaaa and bbbb’,这个查询中，aaaa、bbbb两个词非常少见，而and这个词常见，对文档得分的影响低。解决方案就是使用常用词查询，分为两组，第一组从频率高的，不重要的词查询，然后第二组对第一组的结果进行二次查询，提高了性能。例子如下：{"query":{"common":{"title":{"query":"aaaa and bbbb","cutoff_frequency":0.001}}}}
+查询可使用以下参数：
+o	query:这个参数定义了实际的查询内容
+o	cutoff_frequency:定义一个百分比(0.001表示1%)或一个绝对值（当此属性值>=1时）。这个值用来构建高、低频词组。此参数设置为0.001意味着频率<=0.1%的词将出现在低频词组中。
+o	low_freq_operator:这个参数可以设置为or或and，默认是or。它用来指定低频词组构建查询时用到的布尔运算。如果希望所有的词都在文档中出现才认为是匹配，应该设置为and。
+o	high_freq_operator:同上，它用来指定高频词组。
+o	minimum_should_match：不使用上边两个参数的话，可以使用这个参数，它允许指定匹配的文档中应该出现的查询词的最小个数。
+o	boost：这个参数定义了赋组文档得分的加权值。
+o	analyzer：这个参数定义了分析查询文本时用到的分析器名称。默认为default_analyzer。
+o	disable_coord：此参数的值默认为false，它允许启用或禁用分数因子计算，该计算基于文档中包含的所有查询词的分数。把它设置为true，得分不那么精确，但查询稍微会快。
+不像词条查询和多词条查询，常用词查询是经过ES分析的。
+16.	match查询把query参数中的值歙的出来，加以分析，然后构建相应的查询。传组match查询的词条将被建立索引时相同的分析器处理。match不支持lucene查询语法。示例如下：它将匹配在title字段所有包含crime,and,punishment词条的文档。
+{"query":{"match":{title":"crime and punishment"}}
+同common查询一样，match查询的也有几种类型
+a.	布尔值匹配查询
+	operator：默认是or，也可以是and。连接创建的布尔条件。
+	analyzer：定义了分析查询文本时用到的分析器的名字。默认为default_analyzer。
+	fuzziness:可以通过提供此参数的值来构建模精查询，它为字符串类型提供0.0到1.0的值。用来设置相似性。
+	prefix_length:控制模糊查询的行为。后边会细讲。
+	max_expansions：同上。
+	zero_terms_query:指定当所有的词条都被分析器移除时查询的行为。默认为none，也可以设置为all。none，则移除所有查询词条时，没有文档返回，all则返回所有文档。
+	cutoff_frequecy:允许将参数分解成两组，一组低频词和一组高频词。
+下面是一个例子
+{"query":{"match":{"title":{"query":"aaaa and bbbb","operator":"and"}}}}
+b.	match_phrase查询：它从分析后的文本中构建短语查询，而不是布尔子句。它的在数如下：
+	slop：该值定义了文本查询中的词条和词条之间可以有多少个未知词条，以被视为跟一个短语匹配。默认值是0。它是个整数值。
+	analyzer：定义了分析查询文本时用到的分析器的名字。默认为default_analyzer。
+它的例子格式和前边基本相同。
+c.	match_phrase_prefix查询
+它和match_phrase查询几乎一样，除此之外，它允许查询文本的最后一个词条只做前缀匹配。它除了match_phrases查询公开的参数，还公开了一个参数max_expansions,这个参数控制有多少前辍将被重写成最后的词条。
+17.	multi_match：它和match查询一样，不同的是它不是针对单个字段，而是可以能过fields参数针对多个字段查询。它可以使用match中的所有参数。下面是一个例子：
+{"query":{"multi_match":{"query":"aaaa and bbbb","fields":["title","otitle"]}}}
+除了可用match的参数，它还有几个参数：
+o	use_dis_max:定义一个布尔值，默认是ture，表示使用析取最大分查询，false时，使用布尔查询。
+o	tie_breaker:只有在use_dis_max为true时才会使用这个上参数，它指定低分数项目最高分数项目之间的平衡。
+18.	query_string查询：它支持Apache Lucene全部的查询语法。它使用一个查询解析器把提供的文本构建成实际的查询。
+{ "query":{ "query_string":{ "query":"title:crime^10 +title:punishment -otitle:cat +author:{+Fyodor + dostoevsky}", "default_field":title } } } 
+上面这个是说：查询title字段中包含crime词条的文档，并且这些文档应有10的加权。文档在title中还应该包括punishment,而在otitle中不包含cat，author字段中包括Fyodor和dostoevsky的词条。query_string参数如下：
+o	query：此参数指定查询文本
+o	default_field:此参数指定默认的查询字段，默认值由index.query.default_field属性指定，默认为_all。
+o	default_operator:默认是or，也可以设为true。此参数指定默认的逻辑运算符。
+o	allow_leading_wildcard:此参数指定是否允许通配符作为词条的第一个字符，默认为true。
+o	lowercase_expand_terms:此参数指定查询重写是否把词条变成小写，默认为ture。
+o	enable_position_increments:此参数指定查询结果中的位置增量是否打开，默认是true。
+o	fuzzy_max_expansions：使用模糊查询时，此参数指定模糊查询可被扩展到的最大词条数，默认值是50.
+o	fuzzy_prefix_length:此参数指定生成的模糊查询中的前辍长度，默认值为0。
+o	fuzzy_min_sim:此参数指定模糊查询的最小相似度，默认值为0.5。
+o	phrase_slop:此参数指定短语溢出值，默认值为0。
+o	boost:此参数指定使用的加权值，默认值为1.0。
+o	analyze_wildcard:此参数指定是否应该分析通配符查询生成的词条，默认为false，意味着词条不会被分析。
+o	auto_generate_phrase_queries:此参数指定是否自动生成短语查询，其默认值为false，这意味着不会自动生成。
+o	minimum_should_match：控制必须有多少生成的Boolean should子句必须与文档匹配，才能认为它是匹配的。可以是百分比50%，意味着必须一半匹配，也可以是整数值，如2，意味着至少2个词条必须匹配。
+o	leninet：此参数的取值true或false。如果设置为true，格式方面的失败将被忽略。
+19.	针对多字段的query_string查询：需要在查询主体中提供一个fields，它是个持有字段名称的数组。有两种方法对多个字段运行query_string查询：默认方法是采用布尔查询来构造查询，另一种是使用最大分查询。
+最大分查询要在查询主体中添加use_dis_max属性并将其设置为true。示例如下：
+{ "query":{ "query_string":{ "query":"crime punishment", "fields":["title","otitle"], "use_dis_max":true } } } 
+20.	simple_query_string:它使用lucene最新的查询解析器之一：SimpleQueryParser。类似字符串查询，它接受Lucene查询语法;然而不同的是，它在解析错误时不会抛出异常。它丢弃无效的部分，执行其余部分。
+{ "query":{ "simple_query_string":{ "query":"title:crime^10 +title:punishment -otitle:cat +author:{+Fyodor + dostoevsky}", "default_operator":"and" } } } 
+21.	标识符查询：它仅用提供的标识符来过滤返回的文档。此查询针对内部的_uid字段运行，所以它不需要启用_id字段。例子如下：{"query":{"ids":{"values":["11","12","13","14"]}}}
+此查询只返回具有values数组中一个标识符的文档，也可以限制文档为特定的类型，如只包括book类型的文档。查询如下：`{“query”:{“ids”:{“type”:”book”,values”:[“11”,”12”,”13”,”14”]}}}
+22.	前辍查询在配置方面和词条查询类似。下面是一个查询以cri开头的例子：
+{ "query":{ "prefix":{ "title":"cri" } } } 
+如果要加权，则可以如下设置：
+{ "query":{ "prefix":{ "title":{ "value":"cri", "boost":3.0 } } } } 
+23.	fuzzy_like_this查询类似more_like_this查询。它查找所有与提供的文本类似的文档。与more_like_this的不同点在于它利用模糊字符串并选择生成的最佳差分词条。如在title和otitle字段查询所有类似于crime punishment的文档，示例如下：
+{ "query":{ "fuzzy_like_this":{ "fields":["title","otitle"], "like_text":"crime punishment" } } } 
+它支持以下参数：
+o	fields：执行查询的字段数组，默信值是_all字段。
+o	like_text:这是一个必需参数，包含用来跟文档比较的文本。
+o	ignore_tf:指定在相似度计算期间，是否应忽略词频，默认为false。
+o	max_query_terms:指定生成的查询中能包括的最大查询词条数，默认值为25。
+o	min_similarity:指定差分词条应该有的最小相似性，默认址为0.5。
+o	prefix_length:此参数指定差分词条的公共前缀长度，默认为0。
+o	boost:使用的加权值，默认值是1.0。
+o	analyzer:定义分析所提供文本时用到的分析器的名称。
+24.	fuzzy_like_this_field查询，它与fuzzy_like_this查询类似，但只能对应单个字段，它不支持多字段属性。fuzzy_like_this属性也可用在本查询中。例子如下:
+{ "query":{ "fuzzy_like_this_field":{ "title":{ "like_text":"crime punishment" } } } } 
+25.	fuzzy查询是模糊查询中的第三种类型，它基于编辑距离算法来匹配文档。编辑距离的计算基于我们提供的查询词条和被搜索文档。此查询很占用cpu资源，但需要模糊匹配时它很有用。比如有可能一个单词漏掉了一个字母，它仍会设法找到我们想要的内容。{"query":{"fuzzy":{"title":"crme"}}}
+它的可用参数如下:
+o	value:实际的查询
+o	boost:查询的加权值，默认址是1.0。
+o	min_similarity:指定了一个词条被算作匹配所必须拥有的最小相似度。对于字符串字段来说，这个值区间为[0,1],也就是说，包括0和1。对于数值型字段，这个值可以大于1，比如查询值是20，min_similarity设为3，则可以得到17-23间的值。对于日期，可以设置为1d,2d,1m表示1天，2天，1个月。
+o	prefix_length:指定差分词条的公共前辍长度，默认为0。
+o	max_expansions:指定查询可被扩展到的最大词条数，默认无限制。下面是一个例子：
+{ "query":{ "fuzzy":{ "title":{ "value":"crme", "min_similarity"：0.2 } } } } 
+26.	通配符查询：*和?:{"query":{"wildcard":{"title":"cr?me"}}},还可以对它进行加权，方式和上边的加权相同。但是它不注重性有，使用时应尽量避免。
+27.	more_like_this:查询与提供的文本类似的文档。它有如下几个参数：
+o	fields：执行查询的字段数组，默信值是_all字段。
+o	like_text:这是一个必需参数，包含用来跟文档比较的文本。
+o	percent_terms_to_match:此属性定义了文档需要有多少百分比的词条与查询匹配才认为是类似。默认值是0.3,表示30%。
+o	min_term_freq:定义了文档中词条的最低词频，低于此频率的词条将被忽略。默认为2。
+o	max_query_terms:指定生成的查询中能包括的最大查询词条数，默认值为25。值越大，精度越大，性能越低。
+o	stop_words:定义一个单词数组，当比较文档和查询时，这些单词将被忽略，默认值为空数组。
+o	min_doc_freq:定义了包含某词条的文档的最小数目，低于此数目时，该词条将被忽略，默认值是5，意味着一个词条至少出现在5个文档中，才不会被忽略。
+o	max_doc_freq:与上边的相反，高于指定值的将被忽略。
+o	boost_terms:此参数定义了用于每个词条的加权值，默认值是1。
+o	boost:查询使用的加权值，默认值是1.0。
+o	analyzer:定义分析所提供文本时用到的分析器的名称。
+下面是一个例子：
+{ "query":{ "more_like_this":{ "fields":["title","otitle"], "like_text":"crime and punishment", "min_term_freq":1, "min_doc_freq":1 } } } 
+28.	more_like_this_filed:与more_like_this相似，more_like_this的参数。但是它只能针对单个字段，所以它不支持多字段属性。示例如下：
+{ "query":{ "more_like_this_field":{ "title":{ "like_text":"crime and punishment", "min_term_freq":1, "min_doc_freq":1 } } } } 
+29。 范围查询针对数值型或字符串型，查询一段范围内的值，它只能针对单个字段。它的参数如下:
+o	gte:匹配大于或等于此参数值的文档。
+o	gt:匹配大于此参数值的文档。
+o	lte:匹配小于或等于此参数值的文档。
+o	lt:匹配小于此参数值的文档。
+{ "query":{ "range":{ "year":{ "gte":1700, "lte":1900 } } } } 
+29.	最大分查询会生成一个由所有子查询返回的文档组成的并集并将它返回。我们可以控制较低得到的子查询对文档最后得分的影响。
+文档的最后得分计算过程如下:最高分数的子查询得分之和，加上其余子查询的得分之合乘于tie参数的值，所以可以过tie_breaker参数来控制较低得分的查询对最后得分的影响。设为0.1，则得分为：最高得分+其他得分和*0.1
+{ "query"{ "dismax":{ "tie_breaker":0.99 "boost":10.0 "queries":[ { "match":{"title":"crime"} }，{ "match":{"author":"fyodor"} } ] } } } 
+30.	可以用正则表达多来查询文本，它的性能取决于所选的正则表达式。一般是正则匹配的词条越高，查询越慢。
+{ "query":{ "regexp":{ "title":{ "value":"cr.m[ae]", "boost":10 } } } }
+
+《Elasticsearch服务器开发》学习笔记（五）
+第3章 搜索(二)
+本系列是本人在学习《Elasticsearch服务器开发》一书中所做的读书笔记，如有读不懂的地方，请直接参考原书。建议直接购买原书，支持正版。
+________________________________________
+1.	布尔查询：它可以来封装无限数量的查询，并通过下面描述的节点之一使用一个逻辑值来连接他们。
+o	should:被它封装的布尔查询可能被匹配，也可能不被匹配。被匹配的should节点数目由minimum_should_match参数控制。
+o	must：被它封装的布尔查询必须被匹配，文档才能返回。
+o	must_not：被它封装的布尔查询必须不被匹配，文档才能返回。
+上述每个节点都可以在单个布尔查询中出现多次，可以嵌套查询（一个布尔中多含另一个布尔查询）。结果文档的得分将由文档匹配的所有封装后查询得分总和计算得到。
+还可以在查询主题中添加以下参数控制其行为：
+o	boost:查询使用的加权值，默认是1.0,加权值越高，匹配文档得到得分越高。
+o	minimum_should_match：此参数描述了文档被视为匹配时，应该匹配的should子句的最少数量。它可以是个整数值，也可以是个百分比。
+o	disable_coord:此参数的默认值为false.允许启用或禁用分数因子的计算。该计算基于文档包含的所有查询词条。如果得分不必要太精确，但是查询快点，那么应该将它设置为true。
+下面是一个例子：在title字段中含有crime词条，并且year字段可以在也可以不在1900-2000的范围里，在otitle字段中不可以包含有nothing词条。用布尔查询的话，代码如下:
+{ "query":{ "bool":{ "must":{ "term"{ "title":"crime" } }, "should":{ "range":{ "year":{ "from":1900, "to":2000 } } }, "must_not":{ "term"{ "otitle":"nothing" } } } } } 
+2.	加权查询：它封装了两个查询，并且降低其中一个查询返回文档的得分。它有三个节点需要定义：positive部分，包含所返回文档得分不会被改变的查询；negative部分，返回的文档得分将会被降低；negative_boost部分，包括用来降低negative部分查询得分的加权值。它比布尔查询的好处就是某个查询得分会被降低。
+下面是一个例子：在title字段中含有crime词条，并且希望这样的文档得分不被被改变，并且year字段可以在也可以不在1900-2000的范围里，但这样文档的得分要有一个0.5的加权。代码如下:
+{ "query":{ "boosting":{ "positive":{ "term"{ "title":"crime" } }, "negative":{ "range":{ "year":{ "from":1900, "to":2000 } } }, "negative_boost":0.5 } } } 
+3.	constant_score查询封装了另一个查询(或过滤)，并为每一个所封装查询（或过滤）返回的文档返回一个常量得分。它允许我们严格控制与一个查询或过滤匹配的文档得分。如希望title字段包含crime词条的所有文档的得分为2.0,查询如下:
+{ "query":{ "constant_score":{ "query":{ "term"{ "title":"crime" } }, "boost":2.0 } } } 
+4.	针对多个索引执行查询时，可以通过indices属性提供一个索引的数组以及两个查询，一个通过query属性指定，将执行在指定的索引列表上，另一个通过no_match_query属性指定，将执行在其他所有索引上。假如books中有两个索引：library和users, 我们希望在这两个索引上执行不同的查询：
+{ "query":{ "indices":{ "indices":["library"], "query":{ "term":{ "title":"crime" } }, "no_match_query":{ "term":{ "user":"crime" } } } } } 
+上面这个例子中，query属性中的查询将执行在library索引上，no_match_query属性中的查询将执行在集群中的其它索引上。
+no_match_query属性也可以是个字符串值，而不是一个查询。这个字符串值可以是all或者none，默认是all，表示索引中不匹配的字段都会返回；none则不会返回索引中不匹配的文档。
+5.	查询结果的过滤：在保持最后分数不受影响的前提下，选择索引中的某个子集，就要使用过滤器，而且它还可以提高系统性能。我们在下面的例子中使用post_filter参数保持例子简单，然而，平时应该尽量使用filtered查询，而不是post_filter，因为filtered执行起来更快。
+过滤器只需要在query节点相同级别上添加一个filter节点。如查你只想要使用过滤器，也可以完全忽略query节点。下面是一个在title字段中搜索catch-22并向其添加过滤器的例子：
+{ "query":{ "match":{"title":"catch-22"} }, "post_filter":{ "term":{"year":1961} } } 
+这个查询使用filtered查询写法如下：
+{ "query": { "filtered":{ "query":{ "match":{"title":"catch-22"} }, "filter":{ "term":{"year",:1961} } } } } 
+执行curl -XGET localhost:9200/library/book/_search?pretty -d @query.json。上边这两种查询,结果是一样，但是第一种情况过滤器应用到查询所发现的所有文档上。第二种情况，过滤发生在运行查询之前，性能更好。
+6.	过滤器有很多类型，分别如下：
+o	范围过滤器，用来限制数字。gt:大于；lt：小于；gte：大于等于；lte：小于等于。查询从[1930-1990）年的文档，查询如下：
+{ "post_filter":{ "range":{"year",:1961} } } 
+也可以使用execution参数。这是一个对引擎如何执行过滤器的提示，可用值有fielddata和index。一般经验是在范围内有很多值时，fielddata能提高性能及内存使用。范围内的值较少时，index列好。
+还有个过滤器变种：numeric_filter。这是一个特别设计的版本，用来过滤数值类型的值，此过滤器更快，但有额外的内存点用，因为ES需要加载过滤字段的值，而不管这些值是否在过滤的范围内。当我们使用相同字段或切面或排序时，最好使用此过滤器。
+o	exists过滤器：过滤掉字段没有值的文档。比如要过滤掉year字段没有值的，只返回有值的字段，则要如下处理：
+{ "post_filter":{ "exists":{"field":"year"} } } 
+o	missing过滤器：missing过滤器和exists过滤器相反，它过滤掉给定字段上有值的文档，还可以指定ES对空字段的定义，如null、EMPTY、not-defined等词条的情况。如我们查找没有定义year字段、或者year字段为0的那些文档：
+{ "post_filter":{ "exists":{ "field":"year", "null_value":0, "existence":true } } } 
+existence参数告诉ES应该检查指定字段上存在值的文档，null_value参数定义了应该被视为空的额外值。
+o	脚本过滤器：通过计算某些值来过滤文档：如过滤掉所有发表在一个世纪以前的书，如下：
+{ "post_filter":{ "script":{ "script":"now - doc['year'].value>100", "params":{"now":2012} } } } 
+o	类型过滤器：用来限制文档的类型，当查询运行在多个索引上，或单个索引但有很多类型，可以使用这个过滤器。如想限制返回的类型为book，则可以使用：
+{ "post_filter":{ "type":{"value":"book"} } } 
+o	限定过滤器：限定单个分片返回的文档数目。注意，它与size不同,它是指每个分片返回的文档数目。如下例，最多可返回5个文档，如果分为5片的话：
+{ "post_filter":{ "limit":{"value":"1"} } } 
+o	标识符过滤器：需要过滤若干具体的文档时，可以使用。如要排除booke索引中标识符等于1的文档：
+{ "post_filter":{ "ids":{ "type":["book"], "values":[1]} } } 
+过滤器中几乎可以封装包括所有的查询，如下：
+{ "query":{ "multi_match":{ "query":"novel erich", "fields":["tags","author"] } } } 
+上面这个查询可以重写成
+{ "post_filter":{ "query":{ "multi_match":{ "query":"novel erich", "fields":["tags","author"] } } } } 
+这两个唯一的区别是得分，下边返回的得分便是1。
+7.	ES还有很多专用过滤器：bool过滤器、geo_shape过滤器、has_child过滤器、has_parent过滤器、ids过滤器、indices过滤器、match_all过滤器、nested过滤器、prefix过滤器、range过滤器、regexp过滤器、term过滤器、terms过滤器。
+8.	过滤器的组合使用，例子如下：
+{ "post_filter":{ "not":{ "and":[ { "term":{"title":"Catch-22"} }, { "or":[ { "range":{ "year":{ "gte":1930, "lte":1990 } } },{ "term":{"available":true} } ] } ] } } } 
+关于bool过滤器与and、or、not过滤器的区别，一般情况下，bool过器效率高要尽可能的使用，但是数值型的范围过滤和脚本过滤器、地理坐标的数组过滤器，bool会较低，所以要组合使用。
+9.	命名过滤器可以通过命名的方式让用户知晓那些返回的文档取决于那个过滤器。如返回所有可用且标签为novel,或者来自19世纪的书：
+{ "query":{ "filtered":{ "query":{"match_all":{}} "filter":{ "or":[ { "and":[{"term":{"available":true}}, {"term":{"tags":"novel"}} ] }, { "range":{ "year":{ "gte":1800, "lte":1899 } } } ] } } } 
+在这个例子中之所以使用filtered，是因为这是唯一可以添加过滤器信息的版本。添加信息后的查询如下：
+{ "query":{ "filtered":{ "query":{"match_all":{}} "filter":{ "or":{ "filters":[ { "and":{"filters":[ {"term":{"available":true,"_name":avail}}, {"term":{"tags":"novel",,"_name":tag}} ], "_name":"and"} }, { "range":{ "year":{ "gte":1800, "lte":1899 },"_name":"year" } } ], "_name":"or" } } } } } 
+}
+大多数情况下，应该使用filtered,因为它效率更高。
+10.	缓存的代价是第一次查询时的内存成本及查询时间。所以，缓存最佳选择是可以重复使用的过滤器。缓存可以在and、bool、or过滤器上打开，但通常缓存它们所附的过滤器才是更好的主意。示例如下：
+{ "post_filter":{ "script":{ "_cache":true, "script":"now-doc['year'].value>100", "params":{ "now":2012 } } } } 
+有些过滤器不支持_cache参数，因为它们的结果总是被缓存。这些过滤器如下：exists，missing、range、term、terms,而对于ids、match_all、limit三种过滤器，缓存是无效的。
+11.	高亮显示，如下查询可以返回一个名为highlight部分的高亮：
+{ "query":{ "term":{"title":"crime"} }, "highlight":{ "fields":{ "title":{} } } } 
+为了执行高亮显示，我们必须把用来高亮显示的字段设为stored，或者把这些字段包含在_source字段中。
+Lucene提供了三种类型的高亮实现：标准类型、FastVectorHithlighter，它需要词向量和位置才能工作，pPostingsHighlighter。ES会自动选择正确的高亮实现方式：如果字段的配置中，ter_vector属性设置成了with_positions_offsets，则将使用FastVectorHighlighter。词向量将导致索引变大，但高亮显示的执行需要更少的时间。此外，对于存储了大量数据的字段来说，推荐使用FastVectorHighlighter。
+12.	配置使用不同的高亮方式，如使用HTML标准的来显示高亮，则使用pre_tags和post_tags这些属性。命令如下：
+{ "query":{ "term":{"title":"crime"} }, "highlight":{ "pre_tags":["<b>"], "post_tags":["</b>"], "fields":{ "title":{} } } } 
+上面这个查询是设在全局范围上，它生效在没有设局部设置地方，也可以设在每个字段上设置，如：
+{ "query":{ "term":{"title":"crime"} }, "highlight":{ "fields":{ "title":{ "pre_tags":["<b>"], "post_tags":["</b>"] } } } } 
+13.	ES允许我们控制高亮片段的数量及它的大小。它有两个参数：number_of_fragments,定义ES返回的片段数量，默认值是5。把这个属性设置为0，将导致整个字段被返回。第二个属性是fragment_size，用来指定高亮片段的最大字符长度，默认值是100。
+14.	有时一个关键字在多个字段中都包含，虽然我们只在其中的某个字段中搜索，但所有字段中匹配的结果都会高亮显示。这时，需要设置require_field_match属性设为true，即可。如：curl -XPUT 'http://localhost:9200/users/usre/1' -d '{"name":"Test user","description":"Test document"}'
+现在，我们匹配name中的test，查询如下：
+{ "query":{ "term":{"name":"test"} }, "highlight":{ "fields":{ "name":{"pre_tags":["<b>"],"post_tags":["</b>"] }, "description":{ "name":{"pre_tags":["<b>"],"post_tags":["</b>"] } } } 
+如上查询，最后你会发现，结果中name和description中的test都高亮了。修改如下：
+{ "query":{ "term":{"name":"test"} }, "highlight":{ "require_field_match":"true", "fields":{ "name":{"pre_tags":["<b>"],"post_tags":["</b>"] }, "description":{ "name":{"pre_tags":["<b>"],"post_tags":["</b>"] } } } 
+修改后可以看到高亮返回的字段只有name中的test。
+15.	当字段定义中的index_options设置成offsets时，自动运行PostingsHighlighter。如下：
+curl -XPUT 'localhost:9200/h1_test' curl -XPOST 'localhost:9200/h1_test/doc/_mapping' -d '{ "doc":{ "properties":{ "contents":{ "type":"string", "fields":{ "ps":{"type":"string","index_options":"offsets"} } } } } }' 
+上述代码中我们新建了一个索引和映射。映射定义了两个字段：一个名叫contents，另一个叫contents.ps。
+与FastVectorHighlighter类似，PostingHighlighter需要的offset会导致索引大小增加，但这种增加比使用词向量更小。此外，索引offset比索引词向量更快，且PostingsHighlighter的查询性能更好。
+信息高亮器PostingsHighlighter可以动检测句子的边界面，高亮信息中返回相关的句子，而非整段文字。而且如果搜索”centers of”，他会把单独的”centers”、”of”也会高亮显示，但是标准高亮则不会。
+16.	验证查询：有时候由于查询是自动生成的，最好调用一下ES的验证API，看是否正确。验证API非常简单，把它发送到_validate_query端点，而不是_search就可以了。看下面的查询：
+{ "query":{ "bool":{ "must":{ "term":{ "title":"crime" } }, "should":{ "range:{ "year":{ "from":1900, "to":2000 } } }, "must_not":{ "term":{ "otitle":"nothing" } } } } } 
+执行一下curl -XGET 'localhost:9200/library/_validate/query?pretty' -d @query.json,就会返回valid为false，再执行一下，加入解释参数:curl -XGET 'localhost:9200/library/_validate/query?pretty&explain' --data-binary @query.json，根据错误，我们就很容易能发现问题了，上述rang少一个引号。后边的查询之所以用--data-binary，是因为它能保存换行符，更能容易发现错误。
+17.	数据的组织顺序由得分决定。如下，返回至少含有一个指定单词的所有书：
+{ "query":{ "terms":{ "title":["crime","front","punishment"], "minimum_match":1 } } } 
+在底层，默认查询时，会转化为：
+{ "query":{ "terms":{ "title":["crime","front","punishment"], "minimum_match":1 } }, "sort":{"_score":"desc"} } 
+最简单的，把desc改为asc,也可以使用其他字段排序"sort":[{"title":"asc"}],但是，结果可能有些不是你想像的，主要是因为把title给分析了，产生了好几个标记，ES会在产生的标记里面选一个。所以，如果是针对未经分析的字段进行排序，则是个好主意。如，对一个字段作映射，映射成两个字段，一个用来分析搜索，一个用来排序。如下：
+"title":{ "type":"string", "fields":{ "sort":{"type":"string","index":"not_analyzed"} } } 
+排序查询如下：
+{ "query":{ "match_all":{} }, "sort":[ {"title.sort":"asc"} ] } 
+如果某个文档没有要排序的字段，默认处理是最先显示。即，升序排，最先显示，降序排，则最后显示。如果要更改，则可以做如下操作：
+{ "query":{ "match_all":{} }, "sort":[ {"section":{"order":"asc","missing":"_last"}} ] } 
+missing的值有三个：_first,_last,和任意数字。即固定值。
+18.	动态条件：ES允许使用具有多个值的字段排序。可以使用脚本来控制排序时进行的比较，告诉ES如何计算应用于排序的值来达到目的。如，要通过tags字段中的第一个值来排序：
+{ "query":{ "match_all":{} }, "sort":{ "_script":{ "script":"doc['tags'].values.length>0?doc['tags'].values[0]:'\u19999'","type":"string","order":"asc" } } } 
+上面这段代码指定把不存在的值替换成Unicode字符，该字符在列表中应该处理足够低的位置。此代码的主要想法是检查tags数组中是否包含至少一个元素。是，则返回第一个值，不是，则替换字符。还指定了order排序及type参数，即返回的类型。
+19.	基本上任何涉及多词条的查询，比如前辍查询和通配符查询，都使用查询重写，这样主要是由于基于性能方面的原因。假如索引中有如下数据：
+curl -XPOST 'localhost:9200/library/book/1' -d '{"title":"Solr 4 Cookbook"}' curl -XPOST 'localhost:9200/library/book/2' -d '{"title":"Solr 3.1 Cookbook"}' curl -XPOST 'localhost:9200/library/book/3' -d '{"title":"Mastering Elasticsearch"}' 
+我们需要找到以s开头的所有文档，查询如下：
+curl -XGET 'localhost:9200/library/_search?pretty' -d '{ "query":{ "prefix":{ "title":"s", "rewrite":"constant_score_boolean" } } }' 
+如果看看lucene级别的查询，我们可以看到，查询被改写成：ConstantScore{title:solr}，这是因为solr是唯一以字母s开头的词条。
+20.	可以在任何多项词条查询（如ES的前缀查询和通配符查询）中使用rewrite参数来控制查询如何被改写。把rewrite参数添加到负责实际查询的JSON对象中。如：
+{ "query":{ "prefix":{ "title":"s", "rewrite":"constant_score_boolean" } } } 
+它的参数主要有以下几项：
+o	scoring_boolean:它把生成的每个词条翻译成布尔查询中的一个should子句。此查询重写方法可能是CPU密集型（它计算并存储每个词条的得分），如果查询许多词条，可能超过布尔查询极限，也就是1024.此外，此查询会存储计算所得的分数。
+o	constant_score_boolean：它类似于上边描述的重写方法，但是对CPU要求极低，因为不需要计算得分。相反，每个词条都得到一个与查询加权相等的得分，默认是1，可以通过加权属性进行设置。它也可能达到布尔查询的最高限制。
+o	constant_score_filter:它按顺序访问每个词条，标记该词条的所有文档，并创建一个私有过滤器来重写查询。匹配的文档都被赋予一个与查询加权相等的常量得分。当匹配词条或文档的数量很大时，此方法上面两种要快。
+o	top_terms_N:它把生成的每个词条翻译成布尔查询中的一个should子句，并保持查询计算所得的分数。然后与scoring_boolean重写方法不同，它只会保留N个最高得分的词条，以免达到布尔查询的最大限制。
+o	top_terms_boost_N：这是一种类似top_terms_N的重写方法，不同的是，分数只由加权计算而来，而非查询。
+当重写属性为constant_score_auto或根本没有设置时，根据查询以及构造方式的不同，将选择使用constant_score_filter或constant_score_boolean。
+一般来说，如果能忍受低精度，要求性能好，用top N重写方法。如果需要高精度，性能低，选择布尔方法。
+
+
+Elasticsearch中文乱码问题的解决
+最近在研究ES的分词，一直想找一个理想的大全分词方式，如中国人民，希望能全部分开，分成中国、国人、人民、中国人、国人民、中国人民,6个词。也就是说，不管什么词性、词义、同义词什么的，全部按字数进行切割。争取能够实现类似关系数据库中like的效果。
+后来，听人说IK分词能够达到这个效果，于是，开始安装IK插件，不想却遇到了乱码问题。
+具体乱码情况如下：
+如果输入查询_search，则返回的结果不会乱码。如是查询分词结果_analyze,则会返回乱码。
+问遍了百度、谷歌，始终没有找到解决方案。好像只有极少数的人遇到了这个问题。最终，经过坚持不懈，搞到了解决方案，如来如此：curl发送的是http请求，所以对于中文，最好进行urlencode编码才可以。就类拟于我们在百度输入汉字，请求时，在url中它自动转变成了一串编码。
+因此，只需要把请求curl -XPOST "http://localhost:9200/userinfo/_analyze?analyzer=standard&pretty=true&text=中国人民"改为curl -XPOST "http://localhost:9200/userinfo/_analyze?analyzer=standard&pretty=true&text=%E4%B8%AD%E5%9B%BD%E4%BA%BA%E6%B0%91"即可！
+至于为什么_search不用转码，而_analyze必须经过转码才可以，就不得而知了。
+顺便再说一句要求的上边的IK分词，还是不行，满足不了我的要求，他的最大化分词效果依然不是直接按字数切割，还是词语有关。看来，偶还是要继续摸索去了。
+最后，给大家提供一个转码的网址，大家直接去这儿转码吧（其实各个语言都有这个），各位攻城狮完全可以自已写个啦！
+
